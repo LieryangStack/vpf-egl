@@ -8,10 +8,6 @@
 GST_DEBUG_CATEGORY (egladaption_debug);
 
 
-// #define STB_IMAGE_IMPLEMENTATION
-
-// #include "stb_image.h"
-
 /* GLESv2 GLSL 着色语言
  *
  * OpenGL ES 标准不强制要求支持 YUV。这就是为什么大多数这些着色器都处理打包/平面 YUV 到 RGB 的转换。
