@@ -29,8 +29,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/home/lieryang/Desktop/gst-study/gst-dynamic-manipulation",
-      "program": "/home/lieryang/Desktop/gst-study/gst-dynamic-manipulation/build/Debug/outDebug",
+      "cwd": "/home/lieryang/Desktop/gst-egl",
+      "program": "/home/lieryang/Desktop/gst-egl/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
