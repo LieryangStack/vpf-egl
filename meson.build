@@ -6,3 +6,47 @@ project('vpf_egl_gles_sink', 'c',
           'c_std=gnu99'],
         meson_version: '>= 0.60.0')
 
+# 创建 configuration_data ()
+conf_data = configuration_data()
+
+# set_quoted 会把字符串两边加双引号，value只能是字符串类型
+conf_data.set_quoted('GST_LICENSE', 'LGPL')
+conf_data.set_quoted('GST_PACKAGE_NAME', 'GStreamer Nvidia Bad Plug-ins source release')
+conf_data.set_quoted('GST_PACKAGE_ORIGIN', 'Unknown package origin')
+conf_data.set_quoted('VERSION', '1.2.3')
+
+host = host_machine.cpu_family()
+
+if host == 'x86_64'
+  conf_data.set('IS_DESKTOP', 1, description: '如果是PC端运行，该值就会被定义，该值跟使用GPU CUDA有关')
+endif
+
+
+# 如果是 IOS 系统，就需要定义 HAVE_IOS
+# 如果是 树莓派 RPI, 定义 USE_EGL_RPI
+# 如果是 使用Wayland视窗系统， 定义 USE_EGL_WAYLAND
+conf_data.set('USE_EGL_X11', 1, description: '是否使用的是egl x11窗口')
+
+configure_file(output: 'config.h',
+               configuration: conf_data)
+
+# 头文件路径，头文件路径会根据传入参数返回 1. 基于源代码根目录的 2. 基于构建根目录的
+incs = include_directories('.', 'ext/eglgles', 'gst-libs/gst/egl')
+
+glib-2.0 \
+        gstreamer-1.0 \
+        gstreamer-base-1.0 \
+        gstreamer-video-1.0
+
+# 需要编译的源文件
+c_sources = file {
+  'ext/eglgles/gstegladaptation.c',
+	'ext/eglgles/gstegladaptation_egl.c',
+	'ext/eglgles/gsteglglessink.c',
+	'ext/eglgles/gstegljitter.c',
+	'ext/eglgles/video_platform_wrapper.c',
+	'gst-libs/gst/egl/egl.c
+}
+
+
+          

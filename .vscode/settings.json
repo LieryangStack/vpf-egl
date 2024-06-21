@@ -102,6 +102,6 @@
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "mesonbuild.configureOnOpen": true,
-  "C_Cpp.default.compileCommands": "/home/lieryang/Desktop/gst-egl/builddir/compile_commands.json",
+  "C_Cpp.default.compileCommands": "/home/lieryang/Desktop/vpf-egl/builddir/compile_commands.json",
   "C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild"
 }

@@ -28,9 +28,7 @@
 #ifndef __GST_EGL_ADAPTATION_H__
 #define __GST_EGL_ADAPTATION_H__
 
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
+#include <config.h>
 
 #include <gst/gst.h>
 #include <gst/video/gstvideopool.h>

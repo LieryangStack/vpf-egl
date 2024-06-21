@@ -1,6 +1,4 @@
-#ifdef HAVE_CONFIG_H
-#  include <config.h>
-#endif
+#include <config.h>
 
 #if defined (USE_EGL_RPI) && defined(__GNUC__)
 #ifndef __VCCOREVER__
