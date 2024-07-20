@@ -1,95 +1,3 @@
-/*
- * GStreamer EGL/GLES Sink
- * Copyright (C) 2012 Collabora Ltd.
- *   @author: Reynaldo H. Verdejo Pinochet <reynaldo@collabora.com>
- *   @author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * Copyright (c) 2014-2024, NVIDIA CORPORATION.  All rights reserved.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- */
-
-/**
- * SECTION:element-eglglessink
- *
- * EglGlesSink renders video frames on a EGL surface it sets up
- * from a window it either creates (on X11) or gets a handle to
- * through it's xOverlay interface. All the display/surface logic
- * in this sink uses EGL to interact with the native window system.
- * The rendering logic, in turn, uses OpenGL ES v2.
- *
- * This sink has been tested to work on X11/Mesa and on Android
- * (From Gingerbread on to Jelly Bean) and while it's currently
- * using an slow copy-over rendering path it has proven to be fast
- * enough on the devices we have tried it on.
- *
- * <refsect2>
- * <title>Supported EGL/OpenGL ES versions</title>
- * <para>
- * This Sink uses EGLv1 and GLESv2
- * </para>
- * </refsect2>
- *
- * <refsect2>
- * <title>Example launch line</title>
- * |[
- * gst-launch -v -m videotestsrc ! eglglessink
- * ]|
- * </refsect2>
- *
- * <refsect2>
- * <title>Example launch line with internal window creation disabled</title>
- * <para>
- * By setting the can_create_window property to FALSE you can force the
- * sink to wait for a window handle through it's xOverlay interface even
- * if internal window creation is supported by the platform. Window creation
- * is only supported in X11 right now but it should be trivial to add support
- * for different platforms.
- * </para>
- * |[
- * gst-launch -v -m videotestsrc ! eglglessink can_create_window=FALSE
- * ]|
- * </refsect2>
- *
- * <refsect2>
- * <title>Scaling</title>
- * <para>
- * The sink will try it's best to consider the incoming frame's and display's
- * pixel aspect ratio and fill the corresponding surface without altering the
- * decoded frame's geometry when scaling. You can disable this logic by setting
- * the force_aspect_ratio property to FALSE, in which case the sink will just
- * fill the entire surface it has access to regardles of the PAR/DAR relationship.
- * </para>
- * <para>
- * Querying the display aspect ratio is only supported with EGL versions >= 1.2.
- * The sink will just assume the DAR to be 1/1 if it can't get access to this
- * information.
- * </para>
- * <para>
- * Here is an example launch line with the PAR/DAR aware scaling disabled:
- * </para>
- * |[
- * gst-launch -v -m videotestsrc ! eglglessink force_aspect_ratio=FALSE
- * ]|
- * </refsect2>
- */
-
-
 #include <config.h>
 
 #define EGL_EGLEXT_PROTOTYPES
@@ -117,6 +25,8 @@
 
 #include "gsteglglessink.h"
 #include "gstegljitter.h"
+
+#include <gtk/gtk.h>
 
 
 #ifdef IS_DESKTOP
@@ -216,16 +126,6 @@ static gboolean gst_eglglessink_propose_allocation (GstBaseSink * bsink,
     GstQuery * query);
 static gboolean gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
 
-/* VideoOverlay interface cruft */
-static void gst_eglglessink_videooverlay_init (GstVideoOverlayInterface *
-    iface);
-
-/* Actual VideoOverlay interface funcs */
-static void gst_eglglessink_expose (GstVideoOverlay * overlay);
-static void gst_eglglessink_set_window_handle (GstVideoOverlay * overlay,
-    guintptr id);
-static void gst_eglglessink_set_render_rectangle (GstVideoOverlay * overlay,
-    gint x, gint y, gint width, gint height);
 
 /* Utility */
 static gboolean gst_eglglessink_create_window (GstEglGlesSink *
@@ -562,9 +462,7 @@ gst_egl_image_buffer_pool_init (GstEGLImageBufferPool * pool)
 
 /* 定义了继承于 GstVideoSink 的 GstEglGlesSink 对象  */
 #define parent_class gst_eglglessink_parent_class
-G_DEFINE_TYPE_WITH_CODE (GstEglGlesSink, gst_eglglessink, GST_TYPE_VIDEO_SINK,
-    G_IMPLEMENT_INTERFACE (GST_TYPE_VIDEO_OVERLAY,
-        gst_eglglessink_videooverlay_init));
+G_DEFINE_TYPE (GstEglGlesSink, gst_eglglessink, GST_TYPE_VIDEO_SINK);
 
 gboolean isPlatformSupported (gchar* winsys)
 {
@@ -620,6 +518,8 @@ HANDLE_ERROR:
   GST_ERROR_OBJECT (eglglessink, "Failed to perform EGL init");
   return FALSE;
 }
+
+
 
 /**
  * @brief: 处理 GstBuffer， 然后进行渲染
@@ -928,15 +828,6 @@ gst_eglglessink_stop (GstEglGlesSink * eglglessink)
   return TRUE;
 }
 
-static void
-gst_eglglessink_videooverlay_init (GstVideoOverlayInterface * iface)
-{
-  iface->set_window_handle = gst_eglglessink_set_window_handle;
-  iface->expose = gst_eglglessink_expose;
-  iface->set_render_rectangle = gst_eglglessink_set_render_rectangle;
-}
-
-
 /**
  * @brief: X11窗口事件处理线程
  *         目前只处理窗口关闭事件
@@ -1002,25 +893,6 @@ gst_eglglessink_create_window (GstEglGlesSink * eglglessink, gint width,
 #endif
 
   return window_created;
-}
-
-/**
- * @brief: 如果管道处于暂停状态，移动窗口可能会损坏其窗口显示内容。
- *         应用程序开发人员将希望自己处理暴露事件并强制sink元素刷新窗口的内容。
- */
-static void
-gst_eglglessink_expose (GstVideoOverlay * overlay)
-{
-  GstEglGlesSink *eglglessink;
-  GstFlowReturn ret;
-
-  eglglessink = GST_EGLGLESSINK (overlay);
-  GST_DEBUG_OBJECT (eglglessink, "Expose catched, redisplay");
-
-  /* 渲染最近的一次图像 */
-  ret = gst_eglglessink_queue_object (eglglessink, NULL);
-  if (ret == GST_FLOW_ERROR)
-    GST_ERROR_OBJECT (eglglessink, "Redisplay failed");
 }
 
 static gboolean
@@ -1223,49 +1095,6 @@ HANDLE_ERROR_LOCKED:
   return FALSE;
 }
 
-/**
- * @brief: GstVideoOverlay接口，实现设定窗口句柄
- */
-static void
-gst_eglglessink_set_window_handle (GstVideoOverlay * overlay, guintptr id)
-{
-  GstEglGlesSink *eglglessink = GST_EGLGLESSINK (overlay);
-
-  g_return_if_fail (GST_IS_EGLGLESSINK (eglglessink));
-  GST_DEBUG_OBJECT (eglglessink, "We got a window handle: %p", (void *) id);
-
-  /* OK, we have a new window */
-  GST_OBJECT_LOCK (eglglessink);
-  gst_egl_adaptation_set_window (eglglessink->egl_context, id);
-  eglglessink->have_window = ((uintptr_t) id != 0);
-  GST_OBJECT_UNLOCK (eglglessink);
-
-  g_mutex_lock (&eglglessink->render_lock);
-  g_cond_broadcast (&eglglessink->render_cond);
-  g_mutex_unlock (&eglglessink->render_lock);
-
-  return;
-}
-
-static void
-gst_eglglessink_set_render_rectangle (GstVideoOverlay * overlay, gint x, gint y,
-    gint width, gint height)
-{
-  GstEglGlesSink *eglglessink = GST_EGLGLESSINK (overlay);
-
-  g_return_if_fail (GST_IS_EGLGLESSINK (eglglessink));
-
-  GST_OBJECT_LOCK (eglglessink);
-  eglglessink->render_region.x = x;
-  eglglessink->render_region.y = y;
-  eglglessink->render_region.w = width;
-  eglglessink->render_region.h = height;
-  eglglessink->render_region_changed = TRUE;
-  eglglessink->render_region_user = (width != -1 && height != -1);
-  GST_OBJECT_UNLOCK (eglglessink);
-
-  return;
-}
 
 static void
 queue_item_destroy (GstDataQueueItem * item)
@@ -1278,6 +1107,8 @@ queue_item_destroy (GstDataQueueItem * item)
 /**
  * @brief: 这个函数就是通过 eglglessink->queue 实现跟渲染线程的数据传输，让渲染线程处理 @obj
  * @note: 这个函数的执行完毕，必须等到渲染 render_thread_func 线程处理@obj完毕（阻塞等待渲染线程处理完@obj）
+ * 
+ *       分析： obj = NULL 的情况
 */
 static GstFlowReturn
 gst_eglglessink_queue_object (GstEglGlesSink * eglglessink, GstMiniObject * obj)
@@ -2556,6 +2387,10 @@ gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
   }
 }
 
+
+/**
+ * @brief： IOS系统才会有该函数
+ */
 static void
 gst_eglglessink_set_context (GstElement * element, GstContext * context)
 {
@@ -2575,6 +2410,10 @@ gst_eglglessink_set_context (GstElement * element, GstContext * context)
 #endif
 }
 
+
+/**
+ * @brief： IOS系统才会有该函数
+ */
 static gboolean
 gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
 {
@@ -3027,13 +2866,14 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   return TRUE;
 }
 
+
 /**
  * @brief: 当元素@eglglessink 从 NULL_TO_READY 状态的时候
  *         会调用该函数，初始化 EGL
 */
 static gboolean
-gst_eglglessink_open (GstEglGlesSink * eglglessink)
-{
+gst_eglglessink_open (GstEglGlesSink * eglglessink) {
+
 
   if (!egl_init (eglglessink)) {
     return FALSE;
@@ -3373,12 +3213,12 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
   gobject_class->finalize = gst_eglglessink_finalize;
 
   gstelement_class->change_state = gst_eglglessink_change_state;
-  gstelement_class->set_context = gst_eglglessink_set_context;
+  gstelement_class->set_context = gst_eglglessink_set_context; /* IOS系统才会有该函数 */
 
   gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps);
   gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps);
   gstbasesink_class->propose_allocation =
-      GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation);
+      GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation); /* IOS系统才会有该函数 */
   gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 先调用该函数 */
   gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_eglglessink_query);
 

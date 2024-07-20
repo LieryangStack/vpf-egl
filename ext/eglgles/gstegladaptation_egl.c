@@ -142,8 +142,6 @@ gst_egl_adaptation_init_display (GstEglAdaptationContext * ctx, gchar* winsys)
     }
 #endif
 
-
-
     if (display == EGL_NO_DISPLAY) {
       GST_ERROR_OBJECT (ctx->element, "Could not get EGL display connection");
       goto HANDLE_ERROR;        /* No EGL error is set by eglGetDisplay() */
@@ -161,23 +159,22 @@ gst_egl_adaptation_init_display (GstEglAdaptationContext * ctx, gchar* winsys)
   }
 
   /* 来自UI的 egl_display 已经被初始化了 */
+  if (!eglInitialize (gst_egl_display_get (ctx->display),
+          &ctx->eglglesctx->egl_major, &ctx->eglglesctx->egl_minor)) {
+    got_egl_error ("eglInitialize");
+    GST_ERROR_OBJECT (ctx->element, "Could not init EGL display connection");
+    goto HANDLE_EGL_ERROR;
+  }
 
-  // if (!eglInitialize (gst_egl_display_get (ctx->display),
-  //         &ctx->eglglesctx->egl_major, &ctx->eglglesctx->egl_minor)) {
-  //   got_egl_error ("eglInitialize");
-  //   GST_ERROR_OBJECT (ctx->element, "Could not init EGL display connection");
-  //   goto HANDLE_EGL_ERROR;
-  // }
-
-  // /* Check against required EGL version
-  //  * XXX: Need to review the version requirement in terms of the needed API
-  //  */
-  // if (ctx->eglglesctx->egl_major < GST_EGLGLESSINK_EGL_MIN_VERSION) {
-  //   GST_ERROR_OBJECT (ctx->element, "EGL v%d needed, but you only have v%d.%d",
-  //       GST_EGLGLESSINK_EGL_MIN_VERSION, ctx->eglglesctx->egl_major,
-  //       ctx->eglglesctx->egl_minor);
-  //   goto HANDLE_ERROR;
-  // }
+  /* Check against required EGL version
+   * XXX: Need to review the version requirement in terms of the needed API
+   */
+  if (ctx->eglglesctx->egl_major < GST_EGLGLESSINK_EGL_MIN_VERSION) {
+    GST_ERROR_OBJECT (ctx->element, "EGL v%d needed, but you only have v%d.%d",
+        GST_EGLGLESSINK_EGL_MIN_VERSION, ctx->eglglesctx->egl_major,
+        ctx->eglglesctx->egl_minor);
+    goto HANDLE_ERROR;
+  }
 
   ctx->eglglesctx->egl_major = 3;
 
