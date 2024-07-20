@@ -1004,6 +1004,10 @@ gst_eglglessink_create_window (GstEglGlesSink * eglglessink, gint width,
   return window_created;
 }
 
+/**
+ * @brief: 如果管道处于暂停状态，移动窗口可能会损坏其窗口显示内容。
+ *         应用程序开发人员将希望自己处理暴露事件并强制sink元素刷新窗口的内容。
+ */
 static void
 gst_eglglessink_expose (GstVideoOverlay * overlay)
 {
@@ -1013,7 +1017,7 @@ gst_eglglessink_expose (GstVideoOverlay * overlay)
   eglglessink = GST_EGLGLESSINK (overlay);
   GST_DEBUG_OBJECT (eglglessink, "Expose catched, redisplay");
 
-  /* Render from last seen buffer */
+  /* 渲染最近的一次图像 */
   ret = gst_eglglessink_queue_object (eglglessink, NULL);
   if (ret == GST_FLOW_ERROR)
     GST_ERROR_OBJECT (eglglessink, "Redisplay failed");
@@ -1219,6 +1223,9 @@ HANDLE_ERROR_LOCKED:
   return FALSE;
 }
 
+/**
+ * @brief: GstVideoOverlay接口，实现设定窗口句柄
+ */
 static void
 gst_eglglessink_set_window_handle (GstVideoOverlay * overlay, guintptr id)
 {
@@ -1311,6 +1318,7 @@ gst_eglglessink_queue_object (GstEglGlesSink * eglglessink, GstMiniObject * obj)
   }
 
   GST_DEBUG_OBJECT (eglglessink, "Waiting for object to be handled");
+
   /**
    * 会一直等待 gst_data_queue_push 压入的 item 被处理，
   */
@@ -3346,7 +3354,7 @@ gst_eglglessink_get_property (GObject * object, guint prop_id,
   }
 }
 
-/* initialize the eglglessink's class */
+
 static void
 gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
 {
