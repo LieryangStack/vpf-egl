@@ -455,77 +455,6 @@ HANDLE_ERROR:
   }
 }
 
-#if 0
-static gint
-_test_opengles (GstEglAdaptationContext * ctx){
-  // eglMakeCurrent( egl_display, egl_surface, egl_surface, egl_context );
-  PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC) eglGetProcAddress ("eglCreateImageKHR");
-  PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC) eglGetProcAddress ("eglDestroyImageKHR");
-  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress ("glEGLImageTargetTexture2DOES");
-
-  // load and create a texture 
-  // -------------------------  必须是 GL_TEXTURE_2D
-
-  glBindTexture(GL_TEXTURE_2D, 1); 
-
-  // // 在加载图像之前设置翻转Y轴
-  // stbi_set_flip_vertically_on_load(true); 已经在着色器中修改纹理坐标了
-  int img_width, img_height, nrChannels;
-  // The FileSystem::getPath(...) is part of the GitHub repository so we can find files on any IDE/platform; replace it with your own image path.
-  unsigned char *img_data = stbi_load("/home/lieryang/Desktop/LieryangStack.github.io/assets/OpenGLES/Extension/image/test.jpg", \
-                                  &img_width, &img_height, &nrChannels, 0);
-  if (img_data) {
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img_width, img_height, 0, GL_RGB, GL_UNSIGNED_BYTE, img_data);
-      glGenerateMipmap(GL_TEXTURE_2D);
-  } else {
-      g_print ("Failed to load texture\n");
-  }
-
-  glBindTexture(GL_TEXTURE_2D, 0); 
-
-  const EGLint imageAttributes[] =
-  {
-      EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
-      EGL_NONE
-  };
-
-  /**
-   * EGL_NATIVE_PIXMAP_KHR  像素图创建EGLImageKHR
-   * EGL_LINUX_DMA_BUF_EXT  DMA缓冲区创建EGLImageKHR
-   * EGL_GL_TEXTURE_2D_KHR  使用另一个纹理创建EGLImageKHR
-   * 
-  */
-  EGLImageKHR image = eglCreateImageKHR (gst_egl_display_get (ctx->display), ctx->egl_context, EGL_GL_TEXTURE_2D_KHR,  (EGLClientBuffer)(uintptr_t)1, imageAttributes);
-  if (image == EGL_NO_IMAGE_KHR) {
-    g_print ("EGLImageKHR Error id = 0x%X \n", eglGetError());
-    
-    return 0;
-  }
-
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 2); 
-
-  /**
-   * GL_TEXTURE_EXTERNAL_OES
-   * GL_TEXTURE_2D
-  */
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
-
-  eglDestroyImageKHR (gst_egl_display_get (ctx->display), image);
-
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); 
-
-  glFinish ();
-  // glFlush ();
-
-  /* 这个必须要有，我也不明白为什么，好像有 glFinish 或者 glFlush 就可以了 */
-  // eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  
-  g_print ("%s finish\n", __func__);
-
-  while(1);
-
-}
-#endif
 /**
  * @brief: 1. 创建 EGLSurface
  *         2. 当前线程绑定 EGLContext 
@@ -755,51 +684,494 @@ HANDLE_ERROR:
 
 
 /**
- * @brief: 给GstEglAdaptationContext结构体申请内存
+ * 选择egl配置组时候所需的属性信息
 */
-GstEglAdaptationContext *
-gst_egl_adaptation_context_new (GstElement * element)
-{
-  GstEglAdaptationContext *ctx = g_new0 (GstEglAdaptationContext, 1);
+static const EGLint eglglessink_RGBA8888_attribs[] = {
+  EGL_RED_SIZE, 8,
+  EGL_GREEN_SIZE, 8,
+  EGL_BLUE_SIZE, 8,
+  EGL_ALPHA_SIZE, 8,
+  EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+  EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+  EGL_NONE
+};
 
-  ctx->element = gst_object_ref (element);
-
-  gst_egl_adaptation_init (ctx);
-  return ctx;
-}
 
 /**
- * @brief: 释放 GstEglAdaptationContext结构体内存
+ * @brief: 该函数只有在创建GstBuffer的时候才会调用，而且创建的这个空GstBuffer只是为了回复别人查询，并不是真正的GstBuffer
 */
-void
-gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx)
+static void
+gst_egl_gles_image_data_free (GstEGLGLESImageData * data)
 {
-  gst_egl_adaptation_deinit (ctx);
-  if (GST_OBJECT_REFCOUNT(ctx->element))
-    gst_object_unref (ctx->element);
-  g_free (ctx);
+  if (!eglMakeCurrent (data->display,
+      EGL_NO_SURFACE, EGL_NO_SURFACE, data->eglcontext)) {
+      got_egl_error ("eglMakeCurrent");
+      g_slice_free (GstEGLGLESImageData, data);
+      return;
+  }
+  glDeleteTextures (1, &data->texture);
+  g_slice_free (GstEGLGLESImageData, data);
 }
+
 
 /**
- * 1. 解绑当前线程绑定的上下文  eglMakeCurrent (gst_egl_display_get (ctx->display), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)
- * 2. 
+ * @brief: 获取Buffer，但是该该Buffer中的GstMemory的图片是EGLImageKHR，
+ *         这个EGLImageKHR是空的，因为里面函数新生成一个纹理（该纹理并没有被更新）
+ * @calledby: 只会在查询元素的时候 eglglessink-allocate-eglimage 时候，才会调用，调用几率很小
 */
-gboolean
-gst_egl_adaptation_reset_window (GstEglAdaptationContext * ctx,
-    GstVideoFormat format, gboolean tex_external_oes)
+GstBuffer *
+gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
+    GstEGLDisplay * display, EGLContext eglcontext, GstVideoFormat format,
+    gint width, gint height)
 {
-  if (!gst_egl_adaptation_context_make_current (ctx, FALSE))
-    return FALSE;
+  GstEGLGLESImageData *data = NULL;
+  GstBuffer *buffer;
+  GstVideoInfo info;
+  guint i;
+  gint stride[GST_VIDEO_MAX_PLANES]; /* 一行占用的多少字节内存，比如RGB888就是 3 * width */
+  gsize offset[GST_VIDEO_MAX_PLANES];
+  GstMemory *mem[3] = { NULL, NULL, NULL }; /* 新建GstBuffer，然后把该mem添加到该Buffer中，然后返回 */
+  guint n_mem;
+  GstMemoryFlags flags = 0;
 
-  gst_egl_adaptation_destroy_surface (ctx);
+  memset (stride, 0, sizeof (stride));
+  memset (offset, 0, sizeof (offset));
 
-  ctx->used_window = ctx->window;
+  /* 表示该内存块不能映射到用户可访问的指针地址空间（因为可能返回的，通过当前上下文创建的EGLImageKHR） */
+  if (!gst_egl_image_memory_is_mappable ())
+    flags |= GST_MEMORY_FLAG_NOT_MAPPABLE;
+  /* See https://bugzilla.gnome.org/show_bug.cgi?id=695203 */
+  flags |= GST_MEMORY_FLAG_NO_SHARE;
 
-  if (!gst_egl_adaptation_init_surface (ctx, format, tex_external_oes))
-    return FALSE;
 
-  if (!gst_egl_adaptation_context_make_current (ctx, TRUE))
-    return FALSE;
+  gst_video_info_set_format (&info, format, width, height);
 
-  return TRUE;
+  switch (format) {
+    case GST_VIDEO_FORMAT_RGB:
+    case GST_VIDEO_FORMAT_BGR:{
+      gsize size;  /* 一帧占用的多少字节内存 */
+      EGLImageKHR image;
+
+      mem[0] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_RGB, GST_VIDEO_INFO_WIDTH (&info),
+          GST_VIDEO_INFO_HEIGHT (&info), &size);
+      if (mem[0]) {  /* gst_egl_image_allocator_alloc这返回的是NULL */
+        stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
+        n_mem = 1;
+        GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
+      } else { /* 所以会执行该部分 */
+        data = g_slice_new0 (GstEGLGLESImageData);
+        data->display = gst_egl_display_get (display);
+        data->eglcontext = eglcontext;
+
+        stride[0] = GST_ROUND_UP_4 (GST_VIDEO_INFO_WIDTH (&info) * 3);
+        size = stride[0] * GST_VIDEO_INFO_HEIGHT (&info);
+
+        glGenTextures (1, &data->texture);
+        if (got_gl_error ("glGenTextures"))
+          goto mem_error;
+
+        glBindTexture (GL_TEXTURE_2D, data->texture);
+        if (got_gl_error ("glBindTexture"))
+          goto mem_error;
+
+        /* Set 2D resizing params */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        /* If these are not set the texture image unit will return
+         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
+         * * frames. For a deeper explanation take a look at the OpenGL ES
+         * * documentation for glTexParameter */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (got_gl_error ("glTexParameteri"))
+          goto mem_error;
+
+        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB,
+            GST_VIDEO_INFO_WIDTH (&info),
+            GST_VIDEO_INFO_HEIGHT (&info), 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        if (got_gl_error ("glTexImage2D"))
+          goto mem_error;
+
+        image =
+            gst_egl_display_image_create (display,
+            eglcontext, EGL_GL_TEXTURE_2D_KHR,
+            (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+        if (got_egl_error ("eglCreateImageKHR"))
+          goto mem_error;
+
+        mem[0] =
+            gst_egl_image_allocator_wrap (allocator, display,
+            image, GST_VIDEO_GL_TEXTURE_TYPE_RGB,
+            flags, size, data, (GDestroyNotify) gst_egl_gles_image_data_free);
+        n_mem = 1;
+      }
+      break;
+    }
+    case GST_VIDEO_FORMAT_RGB16:{
+      EGLImageKHR image;
+      gsize size;
+
+      mem[0] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_RGB, GST_VIDEO_INFO_WIDTH (&info),
+          GST_VIDEO_INFO_HEIGHT (&info), &size);
+      if (mem[0]) {
+        stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
+        n_mem = 1;
+        GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
+      } else {
+        data = g_slice_new0 (GstEGLGLESImageData);
+        data->display = gst_egl_display_get (display);
+        data->eglcontext = eglcontext;
+
+        stride[0] = GST_ROUND_UP_4 (GST_VIDEO_INFO_WIDTH (&info) * 2);
+        size = stride[0] * GST_VIDEO_INFO_HEIGHT (&info);
+
+        glGenTextures (1, &data->texture);
+        if (got_gl_error ("glGenTextures"))
+          goto mem_error;
+
+        glBindTexture (GL_TEXTURE_2D, data->texture);
+        if (got_gl_error ("glBindTexture"))
+          goto mem_error;
+
+        /* Set 2D resizing params */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        /* If these are not set the texture image unit will return
+         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
+         * * frames. For a deeper explanation take a look at the OpenGL ES
+         * * documentation for glTexParameter */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (got_gl_error ("glTexParameteri"))
+          goto mem_error;
+
+        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB,
+            GST_VIDEO_INFO_WIDTH (&info),
+            GST_VIDEO_INFO_HEIGHT (&info), 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5,
+            NULL);
+        if (got_gl_error ("glTexImage2D"))
+          goto mem_error;
+
+        image =
+            gst_egl_display_image_create (display,
+            eglcontext, EGL_GL_TEXTURE_2D_KHR,
+            (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+        if (got_egl_error ("eglCreateImageKHR"))
+          goto mem_error;
+
+        mem[0] =
+            gst_egl_image_allocator_wrap (allocator, display,
+            image, GST_VIDEO_GL_TEXTURE_TYPE_RGB,
+            flags, size, data, (GDestroyNotify) gst_egl_gles_image_data_free);
+        n_mem = 1;
+      }
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV12:
+    case GST_VIDEO_FORMAT_NV21:{
+      EGLImageKHR image;
+      gsize size[2];
+
+      mem[0] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE, GST_VIDEO_INFO_COMP_WIDTH (&info,
+              0), GST_VIDEO_INFO_COMP_HEIGHT (&info, 0), &size[0]);
+      mem[1] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE_ALPHA,
+          GST_VIDEO_INFO_COMP_WIDTH (&info, 1),
+          GST_VIDEO_INFO_COMP_HEIGHT (&info, 1), &size[1]);
+
+      if (mem[0] && mem[1]) {
+        stride[0] = size[0] / GST_VIDEO_INFO_HEIGHT (&info);
+        offset[1] = size[0];
+        stride[1] = size[1] / GST_VIDEO_INFO_HEIGHT (&info);
+        n_mem = 2;
+        GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
+        GST_MINI_OBJECT_FLAG_SET (mem[1], GST_MEMORY_FLAG_NO_SHARE);
+      } else {
+        if (mem[0])
+          gst_memory_unref (mem[0]);
+        if (mem[1])
+          gst_memory_unref (mem[1]);
+        mem[0] = mem[1] = NULL;
+
+        stride[0] = GST_ROUND_UP_4 (GST_VIDEO_INFO_COMP_WIDTH (&info, 0));
+        stride[1] = GST_ROUND_UP_4 (GST_VIDEO_INFO_COMP_WIDTH (&info, 1) * 2);
+        offset[1] = stride[0] * GST_VIDEO_INFO_COMP_HEIGHT (&info, 0);
+        size[0] = offset[1];
+        size[1] = stride[1] * GST_VIDEO_INFO_COMP_HEIGHT (&info, 1);
+
+        for (i = 0; i < 2; i++) {
+          data = g_slice_new0 (GstEGLGLESImageData);
+          data->display = gst_egl_display_get (display);
+          data->eglcontext = eglcontext;
+
+          glGenTextures (1, &data->texture);
+          if (got_gl_error ("glGenTextures"))
+            goto mem_error;
+
+          glBindTexture (GL_TEXTURE_2D, data->texture);
+          if (got_gl_error ("glBindTexture"))
+            goto mem_error;
+
+          /* Set 2D resizing params */
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+          /* If these are not set the texture image unit will return
+           * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
+           * * frames. For a deeper explanation take a look at the OpenGL ES
+           * * documentation for glTexParameter */
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          if (got_gl_error ("glTexParameteri"))
+            goto mem_error;
+
+          if (i == 0)
+            glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                GST_VIDEO_INFO_COMP_WIDTH (&info, i),
+                GST_VIDEO_INFO_COMP_HEIGHT (&info, i), 0, GL_LUMINANCE,
+                GL_UNSIGNED_BYTE, NULL);
+          else
+            glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA,
+                GST_VIDEO_INFO_COMP_WIDTH (&info, i),
+                GST_VIDEO_INFO_COMP_HEIGHT (&info, i), 0, GL_LUMINANCE_ALPHA,
+                GL_UNSIGNED_BYTE, NULL);
+
+          if (got_gl_error ("glTexImage2D"))
+            goto mem_error;
+
+          image =
+              gst_egl_display_image_create (display,
+              eglcontext, EGL_GL_TEXTURE_2D_KHR,
+              (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+          if (got_egl_error ("eglCreateImageKHR"))
+            goto mem_error;
+
+          mem[i] =
+              gst_egl_image_allocator_wrap (allocator, display,
+              image,
+              (i ==
+                  0 ? GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE :
+                  GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE_ALPHA),
+              flags, size[i], data,
+              (GDestroyNotify) gst_egl_gles_image_data_free);
+        }
+
+        n_mem = 2;
+      }
+      break;
+    }
+    case GST_VIDEO_FORMAT_I420:
+    case GST_VIDEO_FORMAT_YV12:
+    case GST_VIDEO_FORMAT_Y444:
+    case GST_VIDEO_FORMAT_Y42B:
+    case GST_VIDEO_FORMAT_Y41B:{
+      EGLImageKHR image;
+      gsize size[3];
+
+      mem[0] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE, GST_VIDEO_INFO_COMP_WIDTH (&info,
+              0), GST_VIDEO_INFO_COMP_HEIGHT (&info, 0), &size[0]);
+      mem[1] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE, GST_VIDEO_INFO_COMP_WIDTH (&info,
+              1), GST_VIDEO_INFO_COMP_HEIGHT (&info, 1), &size[1]);
+      mem[2] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE, GST_VIDEO_INFO_COMP_WIDTH (&info,
+              2), GST_VIDEO_INFO_COMP_HEIGHT (&info, 2), &size[2]);
+
+      if (mem[0] && mem[1] && mem[2]) {
+        stride[0] = size[0] / GST_VIDEO_INFO_HEIGHT (&info);
+        offset[1] = size[0];
+        stride[1] = size[1] / GST_VIDEO_INFO_HEIGHT (&info);
+        offset[2] = size[1];
+        stride[2] = size[2] / GST_VIDEO_INFO_HEIGHT (&info);
+        n_mem = 3;
+        GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
+        GST_MINI_OBJECT_FLAG_SET (mem[1], GST_MEMORY_FLAG_NO_SHARE);
+        GST_MINI_OBJECT_FLAG_SET (mem[2], GST_MEMORY_FLAG_NO_SHARE);
+      } else {
+        if (mem[0])
+          gst_memory_unref (mem[0]);
+        if (mem[1])
+          gst_memory_unref (mem[1]);
+        if (mem[2])
+          gst_memory_unref (mem[2]);
+        mem[0] = mem[1] = mem[2] = NULL;
+
+        stride[0] = GST_ROUND_UP_4 (GST_VIDEO_INFO_COMP_WIDTH (&info, 0));
+        stride[1] = GST_ROUND_UP_4 (GST_VIDEO_INFO_COMP_WIDTH (&info, 1));
+        stride[2] = GST_ROUND_UP_4 (GST_VIDEO_INFO_COMP_WIDTH (&info, 2));
+        size[0] = stride[0] * GST_VIDEO_INFO_COMP_HEIGHT (&info, 0);
+        size[1] = stride[1] * GST_VIDEO_INFO_COMP_HEIGHT (&info, 1);
+        size[2] = stride[2] * GST_VIDEO_INFO_COMP_HEIGHT (&info, 2);
+        offset[0] = 0;
+        offset[1] = size[0];
+        offset[2] = offset[1] + size[1];
+
+        for (i = 0; i < 3; i++) {
+          data = g_slice_new0 (GstEGLGLESImageData);
+          data->display = gst_egl_display_get (display);
+          data->eglcontext = eglcontext;
+
+          glGenTextures (1, &data->texture);
+          if (got_gl_error ("glGenTextures"))
+            goto mem_error;
+
+          glBindTexture (GL_TEXTURE_2D, data->texture);
+          if (got_gl_error ("glBindTexture"))
+            goto mem_error;
+
+          /* Set 2D resizing params */
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+          /* If these are not set the texture image unit will return
+           * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
+           * * frames. For a deeper explanation take a look at the OpenGL ES
+           * * documentation for glTexParameter */
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          if (got_gl_error ("glTexParameteri"))
+            goto mem_error;
+
+          glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
+              GST_VIDEO_INFO_COMP_WIDTH (&info, i),
+              GST_VIDEO_INFO_COMP_HEIGHT (&info, i), 0, GL_LUMINANCE,
+              GL_UNSIGNED_BYTE, NULL);
+
+          if (got_gl_error ("glTexImage2D"))
+            goto mem_error;
+
+          image =
+              gst_egl_display_image_create (display,
+              eglcontext, EGL_GL_TEXTURE_2D_KHR,
+              (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+          if (got_egl_error ("eglCreateImageKHR"))
+            goto mem_error;
+
+          mem[i] =
+              gst_egl_image_allocator_wrap (allocator, display,
+              image, GST_VIDEO_GL_TEXTURE_TYPE_LUMINANCE,
+              flags, size[i], data,
+              (GDestroyNotify) gst_egl_gles_image_data_free);
+        }
+
+        n_mem = 3;
+      }
+      break;
+    }
+    case GST_VIDEO_FORMAT_RGBA:
+    case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_ARGB:
+    case GST_VIDEO_FORMAT_ABGR:
+    case GST_VIDEO_FORMAT_RGBx:
+    case GST_VIDEO_FORMAT_BGRx:
+    case GST_VIDEO_FORMAT_xRGB:
+    case GST_VIDEO_FORMAT_xBGR:
+    case GST_VIDEO_FORMAT_AYUV:{
+      gsize size;
+      EGLImageKHR image;
+
+      mem[0] =
+          gst_egl_image_allocator_alloc (allocator, display,
+          GST_VIDEO_GL_TEXTURE_TYPE_RGBA, GST_VIDEO_INFO_WIDTH (&info),
+          GST_VIDEO_INFO_HEIGHT (&info), &size);
+      if (mem[0]) {
+        stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
+        n_mem = 1;
+        GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
+      } else {
+        data = g_slice_new0 (GstEGLGLESImageData);
+        data->display = gst_egl_display_get (display);
+        data->eglcontext = eglcontext;
+
+        stride[0] = GST_ROUND_UP_4 (GST_VIDEO_INFO_WIDTH (&info) * 4);
+        size = stride[0] * GST_VIDEO_INFO_HEIGHT (&info);
+
+        glGenTextures (1, &data->texture);
+        if (got_gl_error ("glGenTextures"))
+          goto mem_error;
+
+        glBindTexture (GL_TEXTURE_2D, data->texture);
+        if (got_gl_error ("glBindTexture"))
+          goto mem_error;
+
+        /* Set 2D resizing params */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        /* If these are not set the texture image unit will return
+         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
+         * * frames. For a deeper explanation take a look at the OpenGL ES
+         * * documentation for glTexParameter */
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (got_gl_error ("glTexParameteri"))
+          goto mem_error;
+
+        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA,
+            GST_VIDEO_INFO_WIDTH (&info),
+            GST_VIDEO_INFO_HEIGHT (&info), 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        if (got_gl_error ("glTexImage2D"))
+          goto mem_error;
+
+        /* 通过 egl当前的上下文创建了一个 EGLImageKHR， */
+        image =
+            gst_egl_display_image_create (display,
+            eglcontext, EGL_GL_TEXTURE_2D_KHR,
+            (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+        if (got_egl_error ("eglCreateImageKHR"))
+          goto mem_error;
+
+        mem[0] =
+            gst_egl_image_allocator_wrap (allocator, display,
+            image, GST_VIDEO_GL_TEXTURE_TYPE_RGBA,
+            flags, size, data, (GDestroyNotify) gst_egl_gles_image_data_free);
+
+        n_mem = 1;
+      }
+      break;
+    }
+    default:
+      g_assert_not_reached ();
+      break;
+  }
+
+  buffer = gst_buffer_new ();
+  gst_buffer_add_video_meta_full (buffer, 0, format, width, height,
+      GST_VIDEO_INFO_N_PLANES (&info), offset, stride);
+
+  for (i = 0; i < n_mem; i++)
+    gst_buffer_append_memory (buffer, mem[i]);
+
+  return buffer;
+
+mem_error:
+  {
+    GST_ERROR_OBJECT (GST_CAT_DEFAULT, "Failed to create EGLImage");
+
+    if (data)
+      gst_egl_gles_image_data_free (data);
+
+    if (mem[0])
+      gst_memory_unref (mem[0]);
+    if (mem[1])
+      gst_memory_unref (mem[1]);
+    if (mem[2])
+      gst_memory_unref (mem[2]);
+
+    return NULL;
+  }
 }
+

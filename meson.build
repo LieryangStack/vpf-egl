@@ -47,10 +47,8 @@ incs = include_directories('.',
 # 需要编译的源文件
 c_sources = files (
   'ext/eglgles/gstegladaptation.c',
-	'ext/eglgles/gstegladaptation_egl.c',
 	'ext/eglgles/gsteglglessink.c',
 	'ext/eglgles/gstegljitter.c',
-	'ext/eglgles/video_platform_wrapper.c',
 	'gst-libs/gst/egl/egl.c')
 
 ds_library_path = '/opt/nvidia/deepstream/deepstream/lib'

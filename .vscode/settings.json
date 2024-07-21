@@ -2,6 +2,7 @@
   "C_Cpp.default.compileCommands": "/home/lieryang/Desktop/vpf-egl/builddir/compile_commands.json",
   "C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild",
   "files.associations": {
-    "video.h": "c"
+    "video.h": "c",
+    "gsteglglessink.h": "c"
   }
 }

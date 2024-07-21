@@ -17,7 +17,6 @@
 #include <X11/Xlib.h>
 
 #include "gstegladaptation.h"
-#include "video_platform_wrapper.h"
 
 #ifdef USE_EGL_RPI
 #include <bcm_host.h>
@@ -543,8 +542,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
   gst_element_post_message (GST_ELEMENT_CAST (eglglessink), message);
   g_value_unset (&val);
 
-  gst_egl_adaptation_bind_API (eglglessink->egl_context);
-
+  eglBindAPI (EGL_OPENGL_ES_API);
 
   /**
    * 如果队列中没有元素，就会阻塞等待（如果设定数据队列为刷新状态，该函数就会立即返回FALSE）
@@ -635,23 +633,23 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         * gst_eglglessink_render returns error if window has been changed.
         * So wait for 1 second to check if window is changing.
         */
-        if (last_flow != GST_FLOW_OK) {
-          if (eglglessink->egl_context->used_window ==
-              eglglessink->egl_context->window) {
-            g_mutex_lock (&eglglessink->render_lock);
-            g_cond_wait_until (&eglglessink->render_cond,
-                &eglglessink->render_lock,
-                g_get_monotonic_time () + G_TIME_SPAN_SECOND);
-            g_mutex_unlock (&eglglessink->render_lock);
-          }
+        // if (last_flow != GST_FLOW_OK) {
+        //   if (eglglessink->egl_context->used_window ==
+        //       eglglessink->egl_context->window) {
+        //     g_mutex_lock (&eglglessink->render_lock);
+        //     g_cond_wait_until (&eglglessink->render_cond,
+        //         &eglglessink->render_lock,
+        //         g_get_monotonic_time () + G_TIME_SPAN_SECOND);
+        //     g_mutex_unlock (&eglglessink->render_lock);
+        //   }
 
-          if (eglglessink->egl_context->used_window !=
-              eglglessink->egl_context->window) {
-            if (gst_egl_adaptation_reset_window (eglglessink->egl_context,
-                    eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf))
-              last_flow = GST_FLOW_OK;
-          }
-        }
+        //   if (eglglessink->egl_context->used_window !=
+        //       eglglessink->egl_context->window) {
+        //     if (gst_egl_adaptation_reset_window (eglglessink->egl_context,
+        //             eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf))
+        //       last_flow = GST_FLOW_OK;
+        //   }
+        // }
 
       } else {
         last_flow = GST_FLOW_OK;
@@ -2797,15 +2795,6 @@ gst_eglglessink_close (GstEglGlesSink * eglglessink)
     g_thread_join (eglglessink->thread);
     eglglessink->thread = NULL;
   }
-
-  if (eglglessink->using_own_window) {
-    g_mutex_lock (&eglglessink->window_lock);
-    gst_egl_adaptation_destroy_native_window (eglglessink->egl_context,
-      &eglglessink->own_window_data, eglglessink->winsys);
-    eglglessink->have_window = FALSE;
-    g_mutex_unlock (&eglglessink->window_lock);
-  }
-  eglglessink->egl_context->used_window = 0;
 
   if (eglglessink->egl_context->display) {
     gst_egl_display_unref (eglglessink->egl_context->display);

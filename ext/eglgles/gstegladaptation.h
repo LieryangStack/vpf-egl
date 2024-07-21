@@ -118,9 +118,7 @@ struct _GstEglAdaptationContext
   GstEaglContext *eaglctx;
   void * window, *used_window;
 #else
-  GstEglGlesRenderContext *eglglesctx; /* EGLConfig、EGLContext、EGLSurface（egl配置、上下文、表面） */
   GstEGLDisplay *display, *set_display; /* egl显示display、创建EGLImageKHR相关函数指针 */
-  EGLNativeWindowType window, used_window; /* 如果使用Xlib库，其实 typedef Window   EGLNativeWindowType;（这两个变量是相等的） */
 #endif
   
   GLuint fragshader[2]; /* fragshader[0]表示正常片段着色程序ID， fragshader[1]表示不能保留前一帧buffer相关的片段着色程序ID（一般不会被复制） */
@@ -143,7 +141,6 @@ struct _GstEglAdaptationContext
   unsigned short index_array[4];
   unsigned int position_buffer, index_buffer;
   gint n_textures; /* 一共有多少个纹理，一般视频格式都是RGBA，所以只创建一个纹理texture[0] */
-
 
   gint surface_width; /* 创建的surface表面宽度 */
   gint surface_height; /* 创建的surface表面高度 */
@@ -179,11 +176,6 @@ void gst_egl_adaptation_release_thread (void);
 EGLContext gst_egl_adaptation_context_get_egl_context (GstEglAdaptationContext * ctx);
 #endif
 
-/* platform window */
-gboolean gst_egl_adaptation_create_native_window (GstEglAdaptationContext
-* ctx, gint width, gint height, gpointer * own_window_data, gchar* winsys);
-void gst_egl_adaptation_destroy_native_window (GstEglAdaptationContext * ctx, gpointer * own_window_data, gchar* winsys);
-
 GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext * ctx);
 gboolean gst_egl_adaptation_choose_config (GstEglAdaptationContext * ctx);
 gboolean gst_egl_adaptation_init_surface (GstEglAdaptationContext * ctx, GstVideoFormat format, gboolean tex_external_oes);
@@ -192,8 +184,6 @@ gboolean gst_egl_adaptation_update_surface_dimensions (GstEglAdaptationContext *
 
 gboolean got_gl_error (const char *wtf);
 gboolean got_egl_error (const char *wtf);
-
-void gst_egl_adaptation_set_window (GstEglAdaptationContext * ctx, guintptr window);
 
 gboolean gst_egl_adaptation_context_make_current (GstEglAdaptationContext * ctx, gboolean bind);
 void gst_egl_adaptation_cleanup (GstEglAdaptationContext * ctx);
