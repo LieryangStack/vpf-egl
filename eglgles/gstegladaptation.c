@@ -155,31 +155,17 @@ gst_egl_adaptation_context_new (GstElement * element)
   return ctx;
 }
 
-/**
- * 选择egl配置组时候所需的属性信息
-*/
-static const EGLint eglglessink_RGBA8888_attribs[] = {
-  EGL_RED_SIZE, 8,
-  EGL_GREEN_SIZE, 8,
-  EGL_BLUE_SIZE, 8,
-  EGL_ALPHA_SIZE, 8,
-  EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-  EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-  EGL_NONE
-};
-
 
 /**
- * @brief: 获取Buffer，但是该该Buffer中的GstMemory的图片是EGLImageKHR，
- *         这个EGLImageKHR是空的，因为里面函数新生成一个纹理（该纹理并没有被更新）
- * @calledby: 只会在查询元素的时候 eglglessink-allocate-eglimage 时候，才会调用，调用几率很小
-*/
+ * @brief: 线程池中创建GstBuffer，最终调用的该函数进行创建GstBuffer
+ */
 GstBuffer *
 gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
                                         GstEGLDisplay * display, 
                                         EGLContext eglcontext, 
                                         GstVideoFormat format,
-                                        gint width, gint height) {
+                                        gint width, 
+                                        gint height) {
 
   GstEGLGLESImageData *data = NULL;
   GstBuffer *buffer;
@@ -200,7 +186,6 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
 
   flags |= GST_MEMORY_FLAG_NO_SHARE;
 
-
   gst_video_info_set_format (&info, format, width, height);
 
   switch (format) {
@@ -209,11 +194,11 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
       gsize size;  /* 一帧占用的多少字节内存 */
       EGLImageKHR image;
 
-      mem[0] =
-          gst_egl_image_allocator_alloc (allocator, display,
-          GST_VIDEO_GL_TEXTURE_TYPE_RGB, GST_VIDEO_INFO_WIDTH (&info),
-          GST_VIDEO_INFO_HEIGHT (&info), &size);
-      if (mem[0]) {  /* gst_egl_image_allocator_alloc 这返回的是NULL */
+      /* mem[0] = NULL, gst_egl_image_allocator_alloc 这返回的是NULL */
+      mem[0] = gst_egl_image_allocator_alloc (allocator, display,
+                                              GST_VIDEO_GL_TEXTURE_TYPE_RGB, GST_VIDEO_INFO_WIDTH (&info),
+                                              GST_VIDEO_INFO_HEIGHT (&info), &size);
+      if (mem[0]) {  /* 不会执行 */
         stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
         n_mem = 1;
         GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
@@ -516,19 +501,18 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
     case GST_VIDEO_FORMAT_BGRx:
     case GST_VIDEO_FORMAT_xRGB:
     case GST_VIDEO_FORMAT_xBGR:
-    case GST_VIDEO_FORMAT_AYUV:{
+    case GST_VIDEO_FORMAT_AYUV:{  /* 主要看 RGBA 格式 */
       gsize size;
       EGLImageKHR image;
 
-      mem[0] =
-          gst_egl_image_allocator_alloc (allocator, display,
-          GST_VIDEO_GL_TEXTURE_TYPE_RGBA, GST_VIDEO_INFO_WIDTH (&info),
-          GST_VIDEO_INFO_HEIGHT (&info), &size);
-      if (mem[0]) {
+      mem[0] = gst_egl_image_allocator_alloc (allocator, display,
+                                              GST_VIDEO_GL_TEXTURE_TYPE_RGBA, GST_VIDEO_INFO_WIDTH (&info),
+                                              GST_VIDEO_INFO_HEIGHT (&info), &size);
+      if (mem[0]) { /* 不执行 */
         stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
         n_mem = 1;
         GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
-      } else {
+      } else { /* 执行 */
         data = g_slice_new0 (GstEGLGLESImageData);
         data->display = gst_egl_display_get (display);
         data->eglcontext = eglcontext;
@@ -553,24 +537,20 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
         if (got_gl_error ("glTexParameteri"))
           goto mem_error;
 
-        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA,
-            GST_VIDEO_INFO_WIDTH (&info),
-            GST_VIDEO_INFO_HEIGHT (&info), 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        /* 没有任何图像的纹理 */
+        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GST_VIDEO_INFO_WIDTH (&info), GST_VIDEO_INFO_HEIGHT (&info), 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         if (got_gl_error ("glTexImage2D"))
           goto mem_error;
 
         /* 通过 egl当前的上下文创建了一个 EGLImageKHR， */
-        image =
-            gst_egl_display_image_create (display,
-            eglcontext, EGL_GL_TEXTURE_2D_KHR,
-            (EGLClientBuffer) (uintptr_t) data->texture, NULL);
+        image = gst_egl_display_image_create (display, eglcontext, EGL_GL_TEXTURE_2D_KHR,
+                                              (EGLClientBuffer) (uintptr_t) data->texture, NULL);
         if (got_egl_error ("eglCreateImageKHR"))
           goto mem_error;
 
-        mem[0] =
-            gst_egl_image_allocator_wrap (allocator, display,
-            image, GST_VIDEO_GL_TEXTURE_TYPE_RGBA,
-            flags, size, data, (GDestroyNotify) gst_egl_gles_image_data_free);
+        mem[0] = gst_egl_image_allocator_wrap (allocator, display,
+                 image, GST_VIDEO_GL_TEXTURE_TYPE_RGBA,
+                 flags, size, data, (GDestroyNotify) gst_egl_gles_image_data_free);
 
         n_mem = 1;
       }
@@ -583,7 +563,7 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
 
   buffer = gst_buffer_new ();
   gst_buffer_add_video_meta_full (buffer, 0, format, width, height,
-      GST_VIDEO_INFO_N_PLANES (&info), offset, stride);
+                                  GST_VIDEO_INFO_N_PLANES (&info), offset, stride);
 
   for (i = 0; i < n_mem; i++)
     gst_buffer_append_memory (buffer, mem[i]);

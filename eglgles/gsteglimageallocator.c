@@ -398,3 +398,4 @@ gst_egl_display_image_create (GstEGLDisplay * display,
 G_DEFINE_BOXED_TYPE (GstEGLDisplay, gst_egl_display,
     (GBoxedCopyFunc) gst_egl_display_ref,
     (GBoxedFreeFunc) gst_egl_display_unref);
+

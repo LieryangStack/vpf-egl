@@ -209,9 +209,10 @@ gst_egl_image_buffer_pool_replace_last_buffer (GstEGLImageBufferPool * pool,
 }
 
 
+
 /**
- * @brief: 会查询该池中的Buffer，（返回的是一个空数据的GstBuffer，该空Buffer创建由 gst_egl_image_allocator_alloc_eglimage）
-*/
+ * @brief: 
+ */
 static GstBuffer *
 gst_eglglessink_egl_image_buffer_pool_send_blocking (GstBufferPool * bpool,
                                                      gpointer data) {
@@ -235,8 +236,8 @@ gst_eglglessink_egl_image_buffer_pool_send_blocking (GstBufferPool * bpool,
       "width", G_TYPE_INT, width, "height", G_TYPE_INT, height, NULL);
   query = gst_query_new_custom (GST_QUERY_CUSTOM, s);
 
-  ret =
-      gst_eglglessink_queue_object (eglglessink, GST_MINI_OBJECT_CAST (query));
+  /* 这会调用 render_thread_func 函数，进行查询处理，然后获取到创建的buffer  */
+  ret = gst_eglglessink_queue_object (eglglessink, GST_MINI_OBJECT_CAST (query));
 
   if (ret == GST_FLOW_OK && gst_structure_has_field (s, "buffer")) {
     v = gst_structure_get_value (s, "buffer");
@@ -269,8 +270,8 @@ gst_egl_image_buffer_pool_get_options (GstBufferPool * bpool)
 */
 static gboolean
 gst_egl_image_buffer_pool_set_config (GstBufferPool * bpool,
-    GstStructure * config)
-{
+                                      GstStructure * config) {
+
   GstEGLImageBufferPool *pool = GST_EGL_IMAGE_BUFFER_POOL (bpool);
   GstCaps *caps;
   GstVideoInfo info;
@@ -290,16 +291,13 @@ gst_egl_image_buffer_pool_set_config (GstBufferPool * bpool,
   if (!gst_video_info_from_caps (&info, caps))
     return FALSE;
 
-  if (!gst_buffer_pool_config_get_allocator (config, &pool->allocator,
-          &pool->params))
+  if (!gst_buffer_pool_config_get_allocator (config, &pool->allocator, &pool->params))
     return FALSE;
 
-  pool->add_metavideo =
-      gst_buffer_pool_config_has_option (config,
-      GST_BUFFER_POOL_OPTION_VIDEO_META);
 
-  pool->want_eglimage = (pool->allocator
-      && g_strcmp0 (pool->allocator->mem_type, GST_EGL_IMAGE_MEMORY_TYPE) == 0);
+  pool->add_metavideo = gst_buffer_pool_config_has_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+
+  pool->want_eglimage = (pool->allocator && g_strcmp0 (pool->allocator->mem_type, GST_EGL_IMAGE_MEMORY_TYPE) == 0);
 
   pool->info = info;
 
@@ -309,17 +307,20 @@ gst_egl_image_buffer_pool_set_config (GstBufferPool * bpool,
 
 static GstFlowReturn
 gst_egl_image_buffer_pool_alloc_buffer (GstBufferPool * bpool,
-    GstBuffer ** buffer, GstBufferPoolAcquireParams * params) {
+                                        GstBuffer ** buffer, 
+                                        GstBufferPoolAcquireParams * params) {
   
   GstEGLImageBufferPool *pool = GST_EGL_IMAGE_BUFFER_POOL (bpool);
 
   *buffer = NULL;
 
+  /* add_metavideo 是什么？， want_eglimage 是TRUE  */
+  /**
+   * add_metavideo
+   * want_eglimage 是 TRUE
+   */
   if (!pool->add_metavideo || !pool->want_eglimage)
-    return
-        GST_BUFFER_POOL_CLASS
-        (gst_egl_image_buffer_pool_parent_class)->alloc_buffer (bpool,
-        buffer, params);
+    return GST_BUFFER_POOL_CLASS (gst_egl_image_buffer_pool_parent_class)->alloc_buffer (bpool, buffer, params);
 
   if (!pool->allocator)
     return GST_FLOW_NOT_NEGOTIATED;
@@ -344,17 +345,16 @@ gst_egl_image_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     case GST_VIDEO_FORMAT_Y444:
     case GST_VIDEO_FORMAT_Y42B:
     case GST_VIDEO_FORMAT_Y41B:{
-
+      
+      /* 调用的是 gst_eglglessink_egl_image_buffer_pool_send_blocking 函数 */
       if (pool->send_blocking_allocate_func)
-        *buffer = pool->send_blocking_allocate_func (bpool,
-            pool->send_blocking_allocate_data);
+        *buffer = pool->send_blocking_allocate_func (bpool, pool->send_blocking_allocate_data);
 
       if (!*buffer) {
         GST_WARNING ("Fallback memory allocation");
         return
             GST_BUFFER_POOL_CLASS
-            (gst_egl_image_buffer_pool_parent_class)->alloc_buffer (bpool,
-            buffer, params);
+            (gst_egl_image_buffer_pool_parent_class)->alloc_buffer (bpool, buffer, params);
       }
 
       return GST_FLOW_OK;
@@ -432,9 +432,8 @@ gst_egl_image_buffer_pool_class_init (GstEGLImageBufferPoolClass * klass)
   gobject_class->finalize = gst_egl_image_buffer_pool_finalize;
   gstbufferpool_class->get_options = gst_egl_image_buffer_pool_get_options;
   gstbufferpool_class->set_config = gst_egl_image_buffer_pool_set_config;
-  gstbufferpool_class->alloc_buffer = gst_egl_image_buffer_pool_alloc_buffer;
-  gstbufferpool_class->acquire_buffer =
-      gst_egl_image_buffer_pool_acquire_buffer;
+  gstbufferpool_class->alloc_buffer = gst_egl_image_buffer_pool_alloc_buffer; /* GstBufferPoolClass分配buffer */
+  gstbufferpool_class->acquire_buffer =  gst_egl_image_buffer_pool_acquire_buffer;
 }
 
 static void
@@ -545,7 +544,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
 
     GST_DEBUG_OBJECT (eglglessink, "Handling object %" GST_PTR_FORMAT, object);
 
-    if (GST_IS_CAPS (object)) {         /* 如果接收到的是GstCaps */
+    if (GST_IS_CAPS (object)) {  /* 如果接收到的是GstCaps */
       GstCaps *caps = GST_CAPS_CAST (object);
 
       if (caps != eglglessink->configured_caps) {
@@ -553,8 +552,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
           last_flow = GST_FLOW_NOT_NEGOTIATED;
         }
       }
-      #ifndef HAVE_IOS
-    } else if (GST_IS_QUERY (object)) { /* 如果是接收到GstQuery查询，其实这一步是被 gst_eglglessink_egl_image_buffer_pool_send_blocking 调用所执行 */
+    } else if (GST_IS_QUERY (object)) {   /* 如果是接收到GstQuery查询，其实这一步是被 GstBufferPool创建Buffer，然后调用gst_eglglessink_egl_image_buffer_pool_send_blocking  */
       GstQuery *query = GST_QUERY_CAST (object);
       GstStructure *s = (GstStructure *) gst_query_get_structure (query);
 
@@ -571,10 +569,11 @@ render_thread_func (GstEglGlesSink * eglglessink) {
           g_assert_not_reached ();
         }
 
-        buffer =
-            gst_egl_image_allocator_alloc_eglimage (GST_EGL_IMAGE_BUFFER_POOL
-            (eglglessink->pool)->allocator, eglglessink->egl_context->display,
-            eglGetCurrentContext(), format, width, height);
+        buffer = gst_egl_image_allocator_alloc_eglimage (GST_EGL_IMAGE_BUFFER_POOL(eglglessink->pool)->allocator, 
+                                                         eglglessink->egl_context->display,
+                                                         eglGetCurrentContext(), 
+                                                         format, width, height);
+
         g_value_init (&v, G_TYPE_POINTER);
         g_value_set_pointer (&v, buffer);
         gst_structure_set_value (s, "buffer", &v);
@@ -583,7 +582,6 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         g_assert_not_reached ();
       }
       last_flow = GST_FLOW_OK;
-      #endif
     } else if (GST_IS_BUFFER (object)) { /* 如果接收到 GstBuffer  */
       GstBuffer *buf = GST_BUFFER_CAST (item->object);
 
@@ -2302,7 +2300,9 @@ gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
 }
 
 
-
+/**
+ * @brief: 设定的是 GstEglAdaptationContext->GstEGLDisplay
+ */
 static void
 gst_eglglessink_set_context (GstElement * element, GstContext * context) {
 
@@ -2312,15 +2312,22 @@ gst_eglglessink_set_context (GstElement * element, GstContext * context) {
   eglglessink = GST_EGLGLESSINK (element);
 
   if (gst_context_get_egl_display (context, &display)) {
+
     GST_OBJECT_LOCK (eglglessink);
+
     if (eglglessink->egl_context->set_display)
       gst_egl_display_unref (eglglessink->egl_context->set_display);
+    
+    /*  */
     eglglessink->egl_context->set_display = display;
+
     GST_OBJECT_UNLOCK (eglglessink);
   }
 }
 
-
+/**
+ * @brief: 提议创建内存池 GstBufferPool
+ */
 static gboolean
 gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query) {
 
@@ -2399,7 +2406,7 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query) {
     size = info.size;
 
     config = gst_buffer_pool_get_config (pool);
-    /* we need at least 2 buffer because we hold on to the last one */
+    /* 我们最少需要分配2个buffer，因为要保存上一帧视频 */
     gst_buffer_pool_config_set_params (config, caps, size, 2, 0);
     gst_buffer_pool_config_set_allocator (config, NULL, &params);
     if (!gst_buffer_pool_set_config (pool, config)) {
@@ -2410,27 +2417,27 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query) {
   }
 
   if (pool) {
-    /* we need at least 2 buffer because we hold on to the last one */
+    /* 我们最少需要分配2个buffer，因为要保存上一帧视频 */
     gst_query_add_allocation_pool (query, pool, size, 2, 0);
     gst_object_unref (pool);
   }
 
-  /* First the default allocator */
-  if (!gst_egl_image_memory_is_mappable ()) {
+  /* 首先获取默认内存分配器 */
+  if (!gst_egl_image_memory_is_mappable ()) { /* 因为返回FALSE，所以执行 */
     allocator = gst_allocator_find (NULL);
+    /* 获取默认内存分配器中的 AllocationParam  */
     gst_query_add_allocation_param (query, allocator, &params);
     gst_object_unref (allocator);
   }
 
+  /* 创建 GstEGLImageAllocator 内存分配器 */
   allocator = gst_egl_image_allocator_new ();
-  if (!gst_egl_image_memory_is_mappable ())
-    params.flags |= GST_MEMORY_FLAG_NOT_MAPPABLE;
+  if (!gst_egl_image_memory_is_mappable ()) /* 因为返回FALSE，所以执行 */
+    params.flags |= GST_MEMORY_FLAG_NOT_MAPPABLE; 
   gst_query_add_allocation_param (query, allocator, &params);
   gst_object_unref (allocator);
 
-  gst_query_add_allocation_meta (query,
-      GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, NULL);
-
+  gst_query_add_allocation_meta (query, GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, NULL);
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
   gst_query_add_allocation_meta (query, GST_VIDEO_CROP_META_API_TYPE, NULL);
 
@@ -2646,17 +2653,6 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
 
   gst_caps_replace (&eglglessink->configured_caps, caps);
 
-  /* gl 编译着色器程序、纹理id生成 */
-  // if (!eglglessink->egl_context->have_surface) {
-  //   if (!gst_egl_adaptation_init_surface (eglglessink->egl_context,
-  //           eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf)) {
-  //     GST_ERROR_OBJECT (eglglessink, "Couldn't init EGL surface from window");
-  //     goto HANDLE_ERROR;
-  //   }
-  // }
-
-  // gst_egl_adaptation_init_exts (eglglessink->egl_context);
-
   /* gl纹理创建CUDA访问句柄 */
   if (eglglessink->using_cuda) {
     if (!gst_eglglessink_cuda_init(eglglessink)) {
@@ -2675,16 +2671,14 @@ HANDLE_ERROR:
 }
 
 static gboolean
-gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
-{
+gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
+
   GstEglGlesSink *eglglessink;
   GstVideoInfo info;
   GstCapsFeatures *features;
-#ifndef HAVE_IOS
   GstBufferPool *newpool, *oldpool;
   GstStructure *config;
   GstAllocationParams params = { 0, };
-#endif
 
   eglglessink = GST_EGLGLESSINK (bsink);
 
@@ -2711,15 +2705,15 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
     GST_ERROR_OBJECT (eglglessink, "Invalid caps %" GST_PTR_FORMAT, caps);
     return FALSE;
   }
-#ifndef HAVE_IOS
+
+  /* 如果是 Jetson 设备，则执行 */
   if (!eglglessink->using_cuda) {
-  newpool =
-      gst_egl_image_buffer_pool_new
-      (gst_eglglessink_egl_image_buffer_pool_send_blocking,
-      gst_object_ref (eglglessink),
-      gst_eglglessink_egl_image_buffer_pool_on_destroy);
+  newpool = gst_egl_image_buffer_pool_new( gst_eglglessink_egl_image_buffer_pool_send_blocking,
+                                           gst_object_ref (eglglessink),
+                                           gst_eglglessink_egl_image_buffer_pool_on_destroy);
   config = gst_buffer_pool_get_config (newpool);
-  /* we need at least 2 buffer because we hold on to the last one */
+  
+  /*我们至少需要2个缓冲区，因为我们保留了最后一个*/
   gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
   gst_buffer_pool_config_set_allocator (config, NULL, &params);
   if (!gst_buffer_pool_set_config (newpool, config)) {
@@ -2736,7 +2730,6 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
   if (oldpool)
     gst_object_unref (oldpool);
   }
-#endif
 
   gst_caps_replace (&eglglessink->current_caps, caps);
 
@@ -3050,16 +3043,15 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
   gobject_class->finalize = gst_eglglessink_finalize;
 
   gstelement_class->change_state = gst_eglglessink_change_state;
-  gstelement_class->set_context = gst_eglglessink_set_context;
+  gstelement_class->set_context = gst_eglglessink_set_context; /* gst_element_set_context 函数调用 */
 
   gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps);
   gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps);
-  gstbasesink_class->propose_allocation = GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation);
-  gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 先调用该函数 */
+  gstbasesink_class->propose_allocation = GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation); /* 进行内存池BufferPool的创建 */
+  gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 显示帧先调用该函数 */
   gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_eglglessink_query);
 
-  gstvideosink_class->show_frame =
-      GST_DEBUG_FUNCPTR (gst_eglglessink_show_frame); /* 再调用该函数 */
+  gstvideosink_class->show_frame = GST_DEBUG_FUNCPTR (gst_eglglessink_show_frame); /* 显示帧再调用该函数 */
 
   g_object_class_install_property (gobject_class, PROP_WINSYS,
       g_param_spec_string ("winsys", "Windowing System",

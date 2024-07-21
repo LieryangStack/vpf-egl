@@ -1,30 +1,3 @@
-/*
- * GStreamer EGL/GLES Sink Adaptation
- * Copyright (C) 2012-2013 Collabora Ltd.
- *   @author: Reynaldo H. Verdejo Pinochet <reynaldo@collabora.com>
- *   @author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- *   @author: Thiago Santos <thiago.sousa.santos@collabora.com>
- * Copyright (c) 2015-2024, NVIDIA CORPORATION.  All rights reserved.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- */
-
 #ifndef __GST_EGL_ADAPTATION_H__
 #define __GST_EGL_ADAPTATION_H__
 
@@ -86,9 +59,8 @@ typedef struct _coord5
 
 
 /***
- * @GstEGLGLESImageData:
- * 只有有在创建空GstBuffer的时候才会调用
- * 而且创建的这个空GstBuffer只是为了回复别人查询，并不是真正的GstBuffer
+ * @GstEGLGLESImageData
+ * 内存池创建GstBuffer的时候是用
 */
 typedef struct
 {
@@ -164,15 +136,7 @@ void gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_init (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_deinit (GstEglAdaptationContext * ctx);
 
-#ifndef HAVE_IOS
-EGLContext gst_egl_adaptation_context_get_egl_context (GstEglAdaptationContext * ctx);
-#endif
-
 GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext * ctx);
-gboolean gst_egl_adaptation_choose_config (GstEglAdaptationContext * ctx);
-gboolean gst_egl_adaptation_init_surface (GstEglAdaptationContext * ctx, GstVideoFormat format, gboolean tex_external_oes);
-void gst_egl_adaptation_init_exts (GstEglAdaptationContext * ctx);
-gboolean gst_egl_adaptation_update_surface_dimensions (GstEglAdaptationContext * ctx);
 
 gboolean got_gl_error (const char *wtf);
 gboolean got_egl_error (const char *wtf);
@@ -186,7 +150,8 @@ gboolean gst_egl_adaptation_context_swap_buffers (GstEglAdaptationContext * ctx,
 
 gboolean gst_egl_adaptation_reset_window (GstEglAdaptationContext * ctx, GstVideoFormat format, gboolean tex_external_oes);
 
-#ifndef HAVE_IOS
+
+
 /* TODO: The goal is to move this function to gstegl lib (or
  * splitted between gstegl lib and gstgl lib) in order to be used in
  * webkitVideoSink
@@ -195,7 +160,7 @@ GstBuffer *
 gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
     GstEGLDisplay * display, EGLContext eglcontext, GstVideoFormat format,
     gint width, gint height);
-#endif
+
 
 G_END_DECLS
 
