@@ -57,7 +57,7 @@
 #include <EGL/eglext.h>
 #endif
 
-#include <gst/egl/egl.h>
+#include "gsteglimageallocator.h"
 
 #if defined (USE_EGL_RPI) && defined(__GNUC__)
 #pragma GCC reset_options

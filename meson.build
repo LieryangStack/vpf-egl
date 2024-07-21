@@ -39,17 +39,15 @@ configure_file(output: 'config.h',
 
 # 头文件路径，头文件路径会根据传入参数返回 1. 基于源代码根目录的 2. 基于构建根目录的
 incs = include_directories('.',
-                               'ext/eglgles', 
-                               'gst-libs', 
-                               'gst-libs/gst/egl',
+                               'eglgles', 
                                '/opt/nvidia/deepstream/deepstream/sources/includes')
 
 # 需要编译的源文件
 c_sources = files (
-  'ext/eglgles/gstegladaptation.c',
-	'ext/eglgles/gsteglglessink.c',
-	'ext/eglgles/gstegljitter.c',
-	'gst-libs/gst/egl/egl.c')
+  'eglgles/gstegladaptation.c',
+	'eglgles/gsteglglessink.c',
+	'eglgles/gstegljitter.c',
+	'eglgles/gsteglimageallocator.c')
 
 ds_library_path = '/opt/nvidia/deepstream/deepstream/lib'
 

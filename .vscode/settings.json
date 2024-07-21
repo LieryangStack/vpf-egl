@@ -6,6 +6,7 @@
     "gsteglglessink.h": "c",
     "config.h": "c",
     "videooverlay.h": "c",
-    "eglext.h": "c"
+    "eglext.h": "c",
+    "gsteglimageallocator.h": "c"
   }
 }

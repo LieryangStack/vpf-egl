@@ -2,9 +2,8 @@
 
 #define EGL_EGLEXT_PROTOTYPES
 
-#include <gst/egl/egl.h>
+#include "gsteglimageallocator.h"
 #include <string.h>
-
 
 
 struct _GstEGLDisplay {
@@ -108,6 +107,11 @@ gst_egl_image_memory_set_orientation (GstMemory * mem,
   GST_EGL_IMAGE_MEMORY (mem)->orientation = orientation;
 }
 
+/********************************************GstEGLImageMemory END***************************************** */
+
+
+
+/*************************************GstEGLImageAllocator相关********************************************* */
 static GstMemory *
 gst_egl_image_allocator_alloc_vfunc (GstAllocator * allocator, 
                                      gsize size,
@@ -118,8 +122,6 @@ gst_egl_image_allocator_alloc_vfunc (GstAllocator * allocator,
 
   return NULL;
 }
-/********************************************GstEGLImageMemory END***************************************** */
-
 
 
 static void
@@ -130,7 +132,7 @@ gst_egl_image_allocator_free_vfunc (GstAllocator * allocator, GstMemory * mem)
 
   g_return_if_fail (gst_is_egl_image_memory (mem));
 
-  /* Shared memory should not destroy all the data */
+  /* 如果有父对象，说明内存被共享了，不应该调用释放函数 */
   if (!mem->parent) {
     display = gst_egl_display_get (emem->display);
     if (emem->display->eglDestroyImage)
@@ -142,6 +144,7 @@ gst_egl_image_allocator_free_vfunc (GstAllocator * allocator, GstMemory * mem)
     gst_egl_display_unref (emem->display);
   }
 
+  /* 如果被共享了，是可以释放的这部分内存的，因为共享的时候使用 g_slice_new 创建了一个新的只读 GstEGLImageMemory */
   g_slice_free (GstEGLImageMemory, emem);
 }
 
@@ -157,35 +160,6 @@ gst_egl_image_mem_unmap (GstMemory * mem)
 }
 
 static GstMemory *
-gst_egl_image_mem_share (GstMemory * mem, gssize offset, gssize size)
-{
-  GstMemory *sub;
-  GstMemory *parent;
-
-  if (offset != 0)
-    return NULL;
-
-  if (size != -1 && size != (gssize)mem->size)
-    return NULL;
-
-  /* find the real parent */
-  if ((parent = mem->parent) == NULL)
-    parent = (GstMemory *) mem;
-
-  if (size == -1)
-    size = mem->size - offset;
-
-  sub = (GstMemory *) g_slice_new (GstEGLImageMemory);
-
-  /* the shared memory is always readonly */
-  gst_memory_init (GST_MEMORY_CAST (sub), GST_MINI_OBJECT_FLAGS (parent) |
-      GST_MINI_OBJECT_FLAG_LOCK_READONLY, mem->allocator, parent,
-      mem->maxsize, mem->align, mem->offset + offset, size);
-
-  return sub;
-}
-
-static GstMemory *
 gst_egl_image_mem_copy (GstMemory * mem, gssize offset, gssize size)
 {
   return NULL;
@@ -196,6 +170,36 @@ gst_egl_image_mem_is_span (GstMemory * mem1, GstMemory * mem2, gsize * offset)
 {
   return FALSE;
 }
+
+static GstMemory *
+gst_egl_image_mem_share (GstMemory * mem, gssize offset, gssize size) {
+
+  GstMemory *sub;
+  GstMemory *parent;
+
+  if (offset != 0)
+    return NULL;
+
+  if (size != -1 && size != (gssize)mem->size)
+    return NULL;
+
+  /* 查看@mem是否有父对象 */
+  if ((parent = mem->parent) == NULL)
+    parent = (GstMemory *) mem;
+
+  if (size == -1)
+    size = mem->size - offset;
+
+  sub = (GstMemory *) g_slice_new (GstEGLImageMemory);
+
+  /* 共享内存应该是只读 */
+  gst_memory_init (GST_MEMORY_CAST (sub), GST_MINI_OBJECT_FLAGS (parent) |
+      GST_MINI_OBJECT_FLAG_LOCK_READONLY, mem->allocator, parent,
+      mem->maxsize, mem->align, mem->offset + offset, size);
+
+  return sub;
+}
+
 
 /* 声明一个EGLImage内存分配器对象 */
 G_DECLARE_FINAL_TYPE (GstEGLImageAllocator, gst_egl_image_allocator, GST, EGL_IMAGE_ALLOCATOR, GstAllocator);
@@ -213,7 +217,7 @@ gst_egl_image_allocator_class_init (GstEGLImageAllocatorClass * klass)
 {
   GstAllocatorClass *allocator_class = (GstAllocatorClass *) klass;
 
-  allocator_class->alloc = gst_egl_image_allocator_alloc_vfunc;
+  allocator_class->alloc = gst_egl_image_allocator_alloc_vfunc; /* 空函数 */
   allocator_class->free = gst_egl_image_allocator_free_vfunc;
 }
 
@@ -233,20 +237,10 @@ gst_egl_image_allocator_init (GstEGLImageAllocator * allocator)
   GST_OBJECT_FLAG_SET (allocator, GST_ALLOCATOR_FLAG_CUSTOM_ALLOC);
 }
 
-
-/**
- * 创建GstEGLImageAllocator内存分配器对象函数，但是不支持内存 map、copy
- */
-GstAllocator *
-gst_egl_image_allocator_new (void) {
-
-  GstAllocator *allocator;
-
-  allocator = g_object_new (gst_egl_image_allocator_get_type (), NULL);
-  return GST_ALLOCATOR (g_object_ref (allocator));
-}
+/*************************************GstEGLImageAllocator END********************************************* */
 
 
+/**********************创建 GstEGLImageMemory 和 GstEGLImageAllocator 函数********************************** */
 GstMemory *
 gst_egl_image_allocator_alloc (GstAllocator * allocator,
                                GstEGLDisplay * display, 
@@ -294,6 +288,24 @@ gst_egl_image_allocator_wrap (GstAllocator * allocator,
   return GST_MEMORY_CAST (mem);
 }
 
+
+/**
+ * @brief: 创建GstEGLImageAllocator内存分配器对象函数，但是不支持内存 map、copy
+ */
+GstAllocator *
+gst_egl_image_allocator_new (void) {
+
+  GstAllocator *allocator;
+
+  allocator = g_object_new (gst_egl_image_allocator_get_type (), NULL);
+  return GST_ALLOCATOR (g_object_ref (allocator));
+}
+
+/*********************创建 GstEGLImageMemory 和 GstEGLImageAllocator END******************************* */
+
+
+
+/**************************************GstEGLDisplay相关********************************************** */
 GstContext *
 gst_context_new_egl_display (GstEGLDisplay * display, gboolean persistent)
 {
