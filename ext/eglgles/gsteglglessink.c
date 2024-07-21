@@ -128,8 +128,6 @@ static gboolean gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
 
 
 /* Utility */
-static gboolean gst_eglglessink_create_window (GstEglGlesSink *
-    eglglessink, gint width, gint height);
 static gboolean gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink);
 static gboolean
 gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps);
@@ -182,6 +180,7 @@ static GstBufferPool
     blocking_allocate_func, gpointer blocking_allocate_data,
     GDestroyNotify destroy_func);
 
+
 /**
  * @brief: 获取视频帧的格式、长宽信息
  * @param format(out): 视频帧的格式
@@ -203,6 +202,7 @@ gst_egl_image_buffer_pool_get_video_infos (GstEGLImageBufferPool * pool,
   if (height)
     *height = pool->info.height;
 }
+
 
 /**
  * @brief: 将@buffer替换pool->last_buffer，其实就是 pool->last_buffer = buffer
@@ -818,72 +818,6 @@ gst_eglglessink_stop (GstEglGlesSink * eglglessink)
   return TRUE;
 }
 
-/**
- * @brief: X11窗口事件处理线程
- *         目前只处理窗口关闭事件
-*/
-#ifdef USE_EGL_X11
-static gpointer
-gst_eglglessink_event_thread (GstEglGlesSink * eglglessink)
-{
-  XEvent e;
-  X11WindowData *data = (eglglessink->own_window_data);
-  Atom wm_delete;
-  g_mutex_lock (&eglglessink->window_lock);
-  while (eglglessink->have_window) {
-    while (XPending (data->display)) {
-      XNextEvent (data->display, &e);
-      switch (e.type) {
-        case ClientMessage:
-          wm_delete = XInternAtom (data->display, "WM_DELETE_WINDOW", 1);
-          if (wm_delete != None && wm_delete == (Atom) e.xclient.data.l[0]) {
-            GST_ELEMENT_ERROR (&eglglessink->videosink, RESOURCE, NOT_FOUND,
-                ("Output window was closed"), (NULL));
-            break;
-          }
-      }
-    }
-    g_mutex_unlock (&eglglessink->window_lock);
-    g_usleep (G_USEC_PER_SEC / 20);
-    g_mutex_lock (&eglglessink->window_lock);
-  }
-  g_mutex_unlock (&eglglessink->window_lock);
-  return NULL;
-}
-#endif
-
-
-/**
- * @brief: 创建 X11 窗口 和 处理X11窗口事件线程
-*/
-static gboolean
-gst_eglglessink_create_window (GstEglGlesSink * eglglessink, gint width,
-    gint height)
-{
-  gboolean window_created = FALSE;
-
-  if (!eglglessink->create_window) {
-    GST_ERROR_OBJECT (eglglessink, "This sink can't create a window by itself");
-    return FALSE;
-  } else
-    GST_INFO_OBJECT (eglglessink, "Attempting internal window creation");
-
-  window_created =
-      gst_egl_adaptation_create_native_window (eglglessink->egl_context, width,
-      height, &eglglessink->own_window_data, eglglessink->winsys);
-  if (!window_created) {
-    GST_ERROR_OBJECT (eglglessink, "Could not create window");
-  }
-
-#ifdef USE_EGL_X11
-  if (g_strcmp0(eglglessink->winsys, "x11") == 0) {
-    eglglessink->event_thread = g_thread_try_new ("eglglessink-events",
-        (GThreadFunc) gst_eglglessink_event_thread, eglglessink, NULL);
-  }
-#endif
-
-  return window_created;
-}
 
 static gboolean
 gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink)
@@ -2743,8 +2677,6 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
        goto HANDLE_ERROR;
     }
   }
-
-  g_print ("success\n");
 
 SUCCEED:
   GST_INFO_OBJECT (eglglessink, "Configured caps successfully");

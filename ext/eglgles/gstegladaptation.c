@@ -207,96 +207,94 @@ gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *
   GST_DEBUG_OBJECT (ctx->element,
       "Building initial list of wanted eglattribs per format");
 
-  /* Init supported format/caps list */
-  if (_gst_egl_choose_config (ctx, TRUE, NULL)) {
+  caps = gst_caps_new_empty ();
 
-    caps = gst_caps_new_empty ();
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRA));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ARGB));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ABGR));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBx));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xRGB));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xBGR));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_AYUV));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y444));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_YV12));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV21));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y42B));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y41B));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB16));
 
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRA));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ARGB));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ABGR));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBx));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xRGB));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xBGR));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_AYUV));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y444));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_YV12));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV21));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y42B));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y41B));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB16));
+  copy1 = gst_caps_copy (caps);
+  copy2 = gst_caps_copy (caps);
 
-    copy1 = gst_caps_copy (caps);
-    copy2 = gst_caps_copy (caps);
-
-    #ifndef HAVE_IOS
-    n = gst_caps_get_size (caps);
-    for (i = 0; i < n; i++) { /* video/x-raw(memory:EGLImage) */
-      GstCapsFeatures *features =
-          gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_EGL_IMAGE, NULL);
-      gst_caps_set_features (caps, i, features);
-    }
-    #endif
-
-    n = gst_caps_get_size (copy1);
-    for (i = 0; i < n; i++) { /* video/x-raw(meta:GstVideoGLTextureUploadMeta) */
-      GstCapsFeatures *features =
-          gst_caps_features_new
-          (GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META, NULL);
-      gst_caps_set_features (copy1, i, features);
-    }
-
-    gst_caps_append (caps, copy1);
-    gst_caps_append (caps, copy2);
-
-    n = gst_caps_get_size (caps);
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
-    gst_caps_append (caps,
-        _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
-    for (i = n; i < n+6; i++) {  /* video/x-raw(memory:NVMM) */
-      GstCapsFeatures *features =
-          gst_caps_features_new ("memory:NVMM", NULL);
-      gst_caps_set_features (caps, i, features);
-    }
-
-  } else {
-    GST_INFO_OBJECT (ctx->element,
-        "EGL display doesn't support RGBA8888 config");
+  #ifndef HAVE_IOS
+  n = gst_caps_get_size (caps);
+  for (i = 0; i < n; i++) { /* video/x-raw(memory:EGLImage) */
+    GstCapsFeatures *features =
+        gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_EGL_IMAGE, NULL);
+    gst_caps_set_features (caps, i, features);
   }
+  #endif
+
+  n = gst_caps_get_size (copy1);
+  for (i = 0; i < n; i++) { /* video/x-raw(meta:GstVideoGLTextureUploadMeta) */
+    GstCapsFeatures *features =
+        gst_caps_features_new
+        (GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META, NULL);
+    gst_caps_set_features (copy1, i, features);
+  }
+
+  gst_caps_append (caps, copy1);
+  gst_caps_append (caps, copy2);
+
+  n = gst_caps_get_size (caps);
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
+  gst_caps_append (caps,
+      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
+  for (i = n; i < n+6; i++) {  /* video/x-raw(memory:NVMM) */
+    GstCapsFeatures *features =
+        gst_caps_features_new ("memory:NVMM", NULL);
+    gst_caps_set_features (caps, i, features);
+  }
+
+  /* 是否应该添加检查  是否支持 RGBA8888 config 属性？？ */
+  // } else {
+  //   GST_INFO_OBJECT (ctx->element,
+  //       "EGL display doesn't support RGBA8888 config");
+  // }
 
   return caps;
 }
@@ -559,7 +557,6 @@ gst_egl_adaptation_init_surface (GstEglAdaptationContext * ctx,
   if (!gst_egl_adaptation_context_make_current (ctx, TRUE))
     goto HANDLE_ERROR_LOCKED;
 
-  
   /* 根据查询信息，是否支持保存交换buffer之前的buffer（上一帧） */
   gst_egl_adaptation_query_buffer_preserved (ctx);
 
