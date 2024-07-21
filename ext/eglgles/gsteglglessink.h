@@ -68,9 +68,7 @@ struct _GstEglGlesSink
   GstVideoInfo configured_info;
   gfloat stride[3];
   GstVideoGLTextureOrientation orientation;
-#ifndef HAVE_IOS
   GstBufferPool *pool;
-#endif
 
   GstEglAdaptationContext *egl_context;
   gint window_x;

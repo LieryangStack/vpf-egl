@@ -3,6 +3,9 @@
   "C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild",
   "files.associations": {
     "video.h": "c",
-    "gsteglglessink.h": "c"
+    "gsteglglessink.h": "c",
+    "config.h": "c",
+    "videooverlay.h": "c",
+    "eglext.h": "c"
   }
 }

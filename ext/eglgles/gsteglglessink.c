@@ -1,10 +1,3 @@
-#include <config.h>
-
-#define EGL_EGLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES
-
-#include "nvbufsurface.h"
-
 #include <string.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -14,18 +7,14 @@
 #include <gst/video/gstvideopool.h>
 #include <gst/video/videooverlay.h>
 
-#include <X11/Xlib.h>
-
 #include "gstegladaptation.h"
-
-#ifdef USE_EGL_RPI
-#include <bcm_host.h>
-#endif
-
 #include "gsteglglessink.h"
 #include "gstegljitter.h"
+#include "config.h"
 
 #include <gtk/gtk.h>
+
+#include "nvbufsurface.h"
 
 
 #ifdef IS_DESKTOP
@@ -106,28 +95,33 @@ enum
   PROP_EGL_SHARE_TEXTURE
 };
 
-static void gst_eglglessink_finalize (GObject * object);
-static void gst_eglglessink_get_property (GObject * object, guint prop_id,
-    GValue * value, GParamSpec * pspec);
-static void gst_eglglessink_set_property (GObject * object, guint prop_id,
-    const GValue * value, GParamSpec * pspec);
-static GstStateChangeReturn gst_eglglessink_change_state (GstElement * element,
-    GstStateChange transition);
-static void gst_eglglessink_set_context (GstElement * element,
-    GstContext * context);
-static GstFlowReturn gst_eglglessink_prepare (GstBaseSink * bsink,
-    GstBuffer * buf);
-static GstFlowReturn gst_eglglessink_show_frame (GstVideoSink * vsink,
-    GstBuffer * buf);
-static gboolean gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps);
-static GstCaps *gst_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter);
-static gboolean gst_eglglessink_propose_allocation (GstBaseSink * bsink,
-    GstQuery * query);
-static gboolean gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
+static void 
+gst_eglglessink_finalize (GObject * object);
+static void 
+gst_eglglessink_get_property (GObject * object, guint prop_id, GValue * value, GParamSpec * pspec);
+static void 
+gst_eglglessink_set_property (GObject * object, guint prop_id, const GValue * value, GParamSpec * pspec);
+static GstStateChangeReturn 
+gst_eglglessink_change_state (GstElement * element, GstStateChange transition);
+static void 
+gst_eglglessink_set_context (GstElement * element, GstContext * context);
+static GstFlowReturn 
+gst_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf);
+static GstFlowReturn 
+gst_eglglessink_show_frame (GstVideoSink * vsink, GstBuffer * buf);
+static gboolean 
+gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps);
+static GstCaps 
+*gst_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter);
+static gboolean 
+gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query);
+static gboolean 
+gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
 
 
 /* Utility */
-static gboolean gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink);
+static gboolean 
+gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink);
 static gboolean
 gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps);
 static gboolean
@@ -136,21 +130,25 @@ static void
 gst_eglglessink_cuda_cleanup(GstEglGlesSink * eglglessink);
 static gboolean
 gst_eglglessink_cuda_buffer_copy(GstEglGlesSink * eglglessink, GstBuffer * buf);
-static GstFlowReturn gst_eglglessink_upload (GstEglGlesSink * sink,
-    GstBuffer * buf);
-static GstFlowReturn gst_eglglessink_render (GstEglGlesSink * sink);
-static GstFlowReturn gst_eglglessink_queue_object (GstEglGlesSink * sink,
-    GstMiniObject * obj);
-static inline gboolean egl_init (GstEglGlesSink * eglglessink);
+static GstFlowReturn 
+gst_eglglessink_upload (GstEglGlesSink * sink, GstBuffer * buf);
+static GstFlowReturn 
+gst_eglglessink_render (GstEglGlesSink * sink);
+static GstFlowReturn 
+gst_eglglessink_queue_object (GstEglGlesSink * sink, GstMiniObject * obj);
+static inline gboolean 
+egl_init (GstEglGlesSink * eglglessink);
 
 
-#ifndef HAVE_IOS
-typedef GstBuffer *(*GstEGLImageBufferPoolSendBlockingAllocate) (GstBufferPool *
-    pool, gpointer data);
+typedef GstBuffer *(*GstEGLImageBufferPoolSendBlockingAllocate) (GstBufferPool *pool, gpointer data);
+
+
+G_DECLARE_FINAL_TYPE (GstEGLImageBufferPool, gst_egl_image_buffer_pool, GST, EGL_IMAGE_BUFFER_POOL, GstVideoBufferPool);
+
 
 /* EGLImage memory, buffer pool, etc */
-typedef struct
-{
+struct _GstEGLImageBufferPool {
+
   GstVideoBufferPool parent;
 
   GstAllocator *allocator;
@@ -162,22 +160,17 @@ typedef struct
   GstEGLImageBufferPoolSendBlockingAllocate send_blocking_allocate_func;
   gpointer send_blocking_allocate_data;
   GDestroyNotify send_blocking_allocate_destroy;
-} GstEGLImageBufferPool;
+};
 
-typedef GstVideoBufferPoolClass GstEGLImageBufferPoolClass;
-
-#define GST_EGL_IMAGE_BUFFER_POOL(p) ((GstEGLImageBufferPool*)(p))
-
-GType gst_egl_image_buffer_pool_get_type (void);
 
 /* 定义了一个继承于 GstVideoBufferPool 的 GstEGLImageBufferPool 对象 */
-G_DEFINE_TYPE (GstEGLImageBufferPool, gst_egl_image_buffer_pool,
-    GST_TYPE_VIDEO_BUFFER_POOL);
+G_DEFINE_TYPE (GstEGLImageBufferPool, gst_egl_image_buffer_pool, GST_TYPE_VIDEO_BUFFER_POOL);
 
-static GstBufferPool
-    * gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate
-    blocking_allocate_func, gpointer blocking_allocate_data,
-    GDestroyNotify destroy_func);
+
+static GstBufferPool* 
+gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate blocking_allocate_func, 
+                               gpointer blocking_allocate_data, 
+                               GDestroyNotify destroy_func);
 
 
 /**
@@ -188,8 +181,8 @@ static GstBufferPool
 */
 static void
 gst_egl_image_buffer_pool_get_video_infos (GstEGLImageBufferPool * pool,
-    GstVideoFormat * format, gint * width, gint * height)
-{
+                                           GstVideoFormat * format, gint * width, gint * height) {
+
   g_return_if_fail (pool != NULL);
 
   if (format)
@@ -221,8 +214,8 @@ gst_egl_image_buffer_pool_replace_last_buffer (GstEGLImageBufferPool * pool,
 */
 static GstBuffer *
 gst_eglglessink_egl_image_buffer_pool_send_blocking (GstBufferPool * bpool,
-    gpointer data)
-{
+                                                     gpointer data) {
+  
   GstFlowReturn ret = GST_FLOW_OK;
   GstQuery *query = NULL;
   GstStructure *s = NULL;
@@ -448,7 +441,7 @@ static void
 gst_egl_image_buffer_pool_init (GstEGLImageBufferPool * pool)
 {
 }
-#endif
+
 
 
 /* 定义了继承于 GstVideoSink 的 GstEglGlesSink 对象  */
@@ -2309,13 +2302,10 @@ gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
 }
 
 
-/**
- * @brief： IOS系统才会有该函数
- */
+
 static void
-gst_eglglessink_set_context (GstElement * element, GstContext * context)
-{
-#ifndef HAVE_IOS
+gst_eglglessink_set_context (GstElement * element, GstContext * context) {
+
   GstEglGlesSink *eglglessink;
   GstEGLDisplay *display = NULL;
 
@@ -2328,17 +2318,12 @@ gst_eglglessink_set_context (GstElement * element, GstContext * context)
     eglglessink->egl_context->set_display = display;
     GST_OBJECT_UNLOCK (eglglessink);
   }
-#endif
 }
 
 
-/**
- * @brief： IOS系统才会有该函数
- */
 static gboolean
-gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
-{
-#ifndef HAVE_IOS
+gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query) {
+
   GstEglGlesSink *eglglessink;
   GstBufferPool *pool;
   GstStructure *config;
@@ -2351,40 +2336,49 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
 
   eglglessink = GST_EGLGLESSINK (bsink);
 
+  /* 初始化分配器变量 */
   gst_allocation_params_init (&params);
 
+  /* 解析查询内容 */
   gst_query_parse_allocation (query, &caps, &need_pool);
   if (!caps) {
     GST_ERROR_OBJECT (eglglessink, "allocation query without caps");
     return FALSE;
   }
 
+  /* 获取caps中的视频格式内容 */
   if (!gst_video_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (eglglessink, "allocation query with invalid caps");
     return FALSE;
   }
 
+
   GST_OBJECT_LOCK (eglglessink);
   pool = eglglessink->pool ? gst_object_ref (eglglessink->pool) : NULL;
   GST_OBJECT_UNLOCK (eglglessink);
 
+  /* 如果我们已经有 内存池 */
   if (pool) {
     GstCaps *pcaps;
 
-    /* we had a pool, check caps */
+    /* 我们检查内存池里面存储的caps格式是否跟查询的格式相等 */
     GST_DEBUG_OBJECT (eglglessink, "check existing pool caps");
     config = gst_buffer_pool_get_config (pool);
     gst_buffer_pool_config_get_params (config, &pcaps, &size, NULL, NULL);
 
     if (!gst_caps_is_equal (caps, pcaps)) {
       GST_DEBUG_OBJECT (eglglessink, "pool has different caps");
-      /* different caps, we can't use this pool */
+      /* 如果内存池的caps与查询里面的caps不一样 */
       gst_object_unref (pool);
       pool = NULL;
     }
     gst_structure_free (config);
   }
 
+  /**
+   * 如果sink已经有了内存池，内存池的caps与查询的caps不相等，赋值 pool = NULL
+   * 如果sink里面本身就没有内存池， poo = NULL
+   */
   if (pool == NULL && need_pool) {
     GstVideoInfo info;
 
@@ -2395,11 +2389,11 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
     }
 
     GST_DEBUG_OBJECT (eglglessink, "create new pool");
-    pool =
-        gst_egl_image_buffer_pool_new
-        (gst_eglglessink_egl_image_buffer_pool_send_blocking,
-        gst_object_ref (eglglessink),
-        gst_eglglessink_egl_image_buffer_pool_on_destroy);
+
+    /* 创建一个新的线程池对象 */
+    pool = gst_egl_image_buffer_pool_new (gst_eglglessink_egl_image_buffer_pool_send_blocking,
+                                          gst_object_ref (eglglessink),
+                                          gst_eglglessink_egl_image_buffer_pool_on_destroy);
 
     /* the normal size of a frame */
     size = info.size;
@@ -2428,7 +2422,7 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
     gst_object_unref (allocator);
   }
 
-  allocator = gst_egl_image_allocator_obtain ();
+  allocator = gst_egl_image_allocator_new ();
   if (!gst_egl_image_memory_is_mappable ())
     params.flags |= GST_MEMORY_FLAG_NOT_MAPPABLE;
   gst_query_add_allocation_param (query, allocator, &params);
@@ -2436,7 +2430,6 @@ gst_eglglessink_propose_allocation (GstBaseSink * bsink, GstQuery * query)
 
   gst_query_add_allocation_meta (query,
       GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, NULL);
-#endif
 
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
   gst_query_add_allocation_meta (query, GST_VIDEO_CROP_META_API_TYPE, NULL);
@@ -3057,12 +3050,11 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
   gobject_class->finalize = gst_eglglessink_finalize;
 
   gstelement_class->change_state = gst_eglglessink_change_state;
-  gstelement_class->set_context = gst_eglglessink_set_context; /* IOS系统才会有该函数 */
+  gstelement_class->set_context = gst_eglglessink_set_context;
 
   gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps);
   gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps);
-  gstbasesink_class->propose_allocation =
-      GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation); /* IOS系统才会有该函数 */
+  gstbasesink_class->propose_allocation = GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation);
   gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 先调用该函数 */
   gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_eglglessink_query);
 
@@ -3259,12 +3251,12 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
 
 }
 
-#ifndef HAVE_IOS
+
 static GstBufferPool *
-gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate
-    blocking_allocate_func, gpointer blocking_allocate_data,
-    GDestroyNotify destroy_func)
-{
+gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate blocking_allocate_func, 
+                               gpointer blocking_allocate_data,
+                               GDestroyNotify destroy_func) {
+
   GstEGLImageBufferPool *pool;
 
   pool = g_object_new (gst_egl_image_buffer_pool_get_type (), NULL);
@@ -3275,7 +3267,6 @@ gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate
 
   return (GstBufferPool *) pool;
 }
-#endif
 
 
 /**

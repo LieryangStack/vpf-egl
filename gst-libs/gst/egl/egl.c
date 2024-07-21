@@ -1,48 +1,14 @@
-/*
- * GStreamer EGL Library 
- * Copyright (C) 2012 Collabora Ltd.
- *   @author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation;
- * version 2 of the License.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
- *
- * You should have received a copy of the GNU Library General Public
- * License along with this library; if not, write to the
- * Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
- * Boston, MA 02110-1301, USA.
- */
 #include "config.h"
-
-
-#if defined (USE_EGL_RPI) && defined(__GNUC__)
-#ifndef __VCCOREVER__
-#define __VCCOREVER__ 0x04000000
-#endif
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wredundant-decls"
-#pragma GCC optimize ("gnu89-inline")
-#endif
 
 #define EGL_EGLEXT_PROTOTYPES
 
 #include <gst/egl/egl.h>
 #include <string.h>
 
-#if defined (USE_EGL_RPI) && defined(__GNUC__)
-#pragma GCC reset_options
-#pragma GCC diagnostic pop
-#endif
 
-struct _GstEGLDisplay
-{
+
+struct _GstEGLDisplay {
+
   EGLDisplay display; /* egl显示 */
   volatile gint refcount; /* 该结构体引用计数 */
   GDestroyNotify destroy_notify; /* 销毁该结构体前执行的回调函数 */
@@ -51,18 +17,22 @@ struct _GstEGLDisplay
   PFNEGLDESTROYIMAGEKHRPROC eglDestroyImage; /* 销毁EGLImageKHR */
 };
 
-typedef struct
-{
+
+
+/********************************GstEGLImageMemory结构体及其相关函数定义************************************ */
+typedef struct {
+
   GstMemory parent;
 
   GstEGLDisplay *display;
   EGLImageKHR image;
-  GstVideoGLTextureType type;
-  GstVideoGLTextureOrientation orientation;
+  GstVideoGLTextureType type; /* 纹理的类型 */
+  GstVideoGLTextureOrientation orientation; /* gl纹理的方向 */
 
   gpointer user_data;
   GDestroyNotify user_data_destroy;
 } GstEGLImageMemory;
+
 
 #define GST_EGL_IMAGE_MEMORY(mem) ((GstEGLImageMemory*)(mem))
 
@@ -139,14 +109,18 @@ gst_egl_image_memory_set_orientation (GstMemory * mem,
 }
 
 static GstMemory *
-gst_egl_image_allocator_alloc_vfunc (GstAllocator * allocator, gsize size,
-    GstAllocationParams * params)
-{
+gst_egl_image_allocator_alloc_vfunc (GstAllocator * allocator, 
+                                     gsize size,
+                                     GstAllocationParams * params) {
+
   g_warning
       ("Use gst_egl_image_allocator_alloc() to allocate from this allocator");
 
   return NULL;
 }
+/********************************************GstEGLImageMemory END***************************************** */
+
+
 
 static void
 gst_egl_image_allocator_free_vfunc (GstAllocator * allocator, GstMemory * mem)
@@ -223,14 +197,16 @@ gst_egl_image_mem_is_span (GstMemory * mem1, GstMemory * mem2, gsize * offset)
   return FALSE;
 }
 
-typedef GstAllocator GstEGLImageAllocator;
-typedef GstAllocatorClass GstEGLImageAllocatorClass;
+/* 声明一个EGLImage内存分配器对象 */
+G_DECLARE_FINAL_TYPE (GstEGLImageAllocator, gst_egl_image_allocator, GST, EGL_IMAGE_ALLOCATOR, GstAllocator);
 
-GType gst_egl_image_allocator_get_type (void);
+struct _GstEGLImageAllocator {
+  GstAllocator parent;
+};
+
+/* 定义一个EGLImage内存分配器对象 */
 G_DEFINE_TYPE (GstEGLImageAllocator, gst_egl_image_allocator, GST_TYPE_ALLOCATOR);
 
-#define GST_TYPE_EGL_IMAGE_ALLOCATOR   (gst_egl_image_mem_allocator_get_type())
-#define GST_IS_EGL_IMAGE_ALLOCATOR(obj) (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_EGL_IMAGE_ALLOCATOR))
 
 static void
 gst_egl_image_allocator_class_init (GstEGLImageAllocatorClass * klass)
@@ -241,57 +217,66 @@ gst_egl_image_allocator_class_init (GstEGLImageAllocatorClass * klass)
   allocator_class->free = gst_egl_image_allocator_free_vfunc;
 }
 
+
 static void
 gst_egl_image_allocator_init (GstEGLImageAllocator * allocator)
 {
   GstAllocator *alloc = GST_ALLOCATOR_CAST (allocator);
 
   alloc->mem_type = GST_EGL_IMAGE_MEMORY_TYPE;
-  alloc->mem_map = gst_egl_image_mem_map;
+  alloc->mem_map = gst_egl_image_mem_map; /* 不能映射 */
   alloc->mem_unmap = gst_egl_image_mem_unmap;
   alloc->mem_share = gst_egl_image_mem_share;
-  alloc->mem_copy = gst_egl_image_mem_copy;
+  alloc->mem_copy = gst_egl_image_mem_copy; /* 不能拷贝 */
   alloc->mem_is_span = gst_egl_image_mem_is_span;
 
   GST_OBJECT_FLAG_SET (allocator, GST_ALLOCATOR_FLAG_CUSTOM_ALLOC);
 }
 
-static gpointer
-gst_egl_image_allocator_init_instance (gpointer data)
-{
-  return g_object_new (gst_egl_image_allocator_get_type (), NULL);
-}
 
+/**
+ * 创建GstEGLImageAllocator内存分配器对象函数，但是不支持内存 map、copy
+ */
 GstAllocator *
-gst_egl_image_allocator_obtain (void)
-{
+gst_egl_image_allocator_new (void) {
+
   GstAllocator *allocator;
 
-  allocator = gst_egl_image_allocator_init_instance(NULL);
+  allocator = g_object_new (gst_egl_image_allocator_get_type (), NULL);
   return GST_ALLOCATOR (g_object_ref (allocator));
 }
 
+
 GstMemory *
 gst_egl_image_allocator_alloc (GstAllocator * allocator,
-    GstEGLDisplay * display, GstVideoGLTextureType type, gint width,
-    gint height, gsize * size)
-{
+                               GstEGLDisplay * display, 
+                               GstVideoGLTextureType type, 
+                               gint width,
+                               gint height, 
+                               gsize * size) {
   return NULL;
 }
 
+/**
+ * @brief： 真正创建GstEGLImageMemory对象的函数
+ */
 GstMemory *
 gst_egl_image_allocator_wrap (GstAllocator * allocator,
-    GstEGLDisplay * display, EGLImageKHR image, GstVideoGLTextureType type,
-    GstMemoryFlags flags, gsize size, gpointer user_data,
-    GDestroyNotify user_data_destroy)
-{
+                              GstEGLDisplay * display, 
+                              EGLImageKHR image, 
+                              GstVideoGLTextureType type,
+                              GstMemoryFlags flags, 
+                              gsize size, 
+                              gpointer user_data,
+                              GDestroyNotify user_data_destroy) {
+  
   GstEGLImageMemory *mem;
 
   g_return_val_if_fail (display != NULL, NULL);
   g_return_val_if_fail (image != EGL_NO_IMAGE_KHR, NULL);
 
   if (!allocator) {
-    allocator = gst_egl_image_allocator_obtain ();
+    allocator = gst_egl_image_allocator_new ();
   }
 
   mem = g_slice_new (GstEGLImageMemory);
@@ -383,11 +368,14 @@ gst_egl_display_get (GstEGLDisplay * display)
   return display->display;
 }
 
+
 EGLImageKHR
 gst_egl_display_image_create (GstEGLDisplay * display,
-    EGLContext ctx,
-    EGLenum target, EGLClientBuffer buffer, const EGLint * attrib_list)
-{
+                              EGLContext ctx,
+                              EGLenum target, 
+                              EGLClientBuffer buffer, 
+                              const EGLint * attrib_list) {
+                              
   if (!display->eglCreateImage)
     return EGL_NO_IMAGE_KHR;
 

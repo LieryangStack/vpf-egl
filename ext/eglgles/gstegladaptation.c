@@ -176,8 +176,10 @@ static const EGLint eglglessink_RGBA8888_attribs[] = {
 */
 GstBuffer *
 gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
-    GstEGLDisplay * display, EGLContext eglcontext, GstVideoFormat format,
-    gint width, gint height) {
+                                        GstEGLDisplay * display, 
+                                        EGLContext eglcontext, 
+                                        GstVideoFormat format,
+                                        gint width, gint height) {
 
   GstEGLGLESImageData *data = NULL;
   GstBuffer *buffer;
@@ -195,7 +197,7 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
   /* 表示该内存块不能映射到用户可访问的指针地址空间（因为可能返回的，通过当前上下文创建的EGLImageKHR） */
   if (!gst_egl_image_memory_is_mappable ())
     flags |= GST_MEMORY_FLAG_NOT_MAPPABLE;
-  /* See https://bugzilla.gnome.org/show_bug.cgi?id=695203 */
+
   flags |= GST_MEMORY_FLAG_NO_SHARE;
 
 
@@ -211,7 +213,7 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
           gst_egl_image_allocator_alloc (allocator, display,
           GST_VIDEO_GL_TEXTURE_TYPE_RGB, GST_VIDEO_INFO_WIDTH (&info),
           GST_VIDEO_INFO_HEIGHT (&info), &size);
-      if (mem[0]) {  /* gst_egl_image_allocator_alloc这返回的是NULL */
+      if (mem[0]) {  /* gst_egl_image_allocator_alloc 这返回的是NULL */
         stride[0] = size / GST_VIDEO_INFO_HEIGHT (&info);
         n_mem = 1;
         GST_MINI_OBJECT_FLAG_SET (mem[0], GST_MEMORY_FLAG_NO_SHARE);
@@ -231,16 +233,11 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
         if (got_gl_error ("glBindTexture"))
           goto mem_error;
 
-        /* Set 2D resizing params */
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        /* If these are not set the texture image unit will return
-         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
-         * * frames. For a deeper explanation take a look at the OpenGL ES
-         * * documentation for glTexParameter */
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         if (got_gl_error ("glTexParameteri"))
           goto mem_error;
 
@@ -293,16 +290,11 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
         if (got_gl_error ("glBindTexture"))
           goto mem_error;
 
-        /* Set 2D resizing params */
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        /* If these are not set the texture image unit will return
-         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
-         * * frames. For a deeper explanation take a look at the OpenGL ES
-         * * documentation for glTexParameter */
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         if (got_gl_error ("glTexParameteri"))
           goto mem_error;
 
@@ -376,16 +368,11 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
           if (got_gl_error ("glBindTexture"))
             goto mem_error;
 
-          /* Set 2D resizing params */
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-          /* If these are not set the texture image unit will return
-           * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
-           * * frames. For a deeper explanation take a look at the OpenGL ES
-           * * documentation for glTexParameter */
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      
           if (got_gl_error ("glTexParameteri"))
             goto mem_error;
 
@@ -487,16 +474,11 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
           if (got_gl_error ("glBindTexture"))
             goto mem_error;
 
-          /* Set 2D resizing params */
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-          /* If these are not set the texture image unit will return
-           * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
-           * * frames. For a deeper explanation take a look at the OpenGL ES
-           * * documentation for glTexParameter */
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
           glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
           if (got_gl_error ("glTexParameteri"))
             goto mem_error;
 
@@ -562,16 +544,12 @@ gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
         if (got_gl_error ("glBindTexture"))
           goto mem_error;
 
-        /* Set 2D resizing params */
+
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        /* If these are not set the texture image unit will return
-         * * (R, G, B, A) = black on glTexImage2D for non-POT width/height
-         * * frames. For a deeper explanation take a look at the OpenGL ES
-         * * documentation for glTexParameter */
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         if (got_gl_error ("glTexParameteri"))
           goto mem_error;
 

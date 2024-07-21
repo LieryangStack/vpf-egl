@@ -1,24 +1,3 @@
-/*
- * GStreamer EGL Library 
- * Copyright (C) 2012 Collabora Ltd.
- *   @author: Sebastian Dröge <sebastian.droege@collabora.co.uk>
- * *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation;
- * version 2 of the License.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
- *
- * You should have received a copy of the GNU Library General Public
- * License along with this library; if not, write to the
- * Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
- * Boston, MA 02110-1301, USA.
- */
-
 #ifndef __GST_EGL_H__
 #define __GST_EGL_H__
 
@@ -45,15 +24,27 @@ GstVideoGLTextureOrientation gst_egl_image_memory_get_orientation (GstMemory * m
 void gst_egl_image_memory_set_orientation (GstMemory * mem,
     GstVideoGLTextureOrientation orientation);
 
-/* Generic EGLImage allocator that doesn't support mapping, copying or anything */
-GstAllocator *gst_egl_image_allocator_obtain (void);
-GstMemory *gst_egl_image_allocator_alloc (GstAllocator * allocator,
-    GstEGLDisplay * display, GstVideoGLTextureType type, gint width, gint height,
-    gsize * size);
-GstMemory *gst_egl_image_allocator_wrap (GstAllocator * allocator,
-    GstEGLDisplay * display, EGLImageKHR image, GstVideoGLTextureType type,
-    GstMemoryFlags flags, gsize size, gpointer user_data,
-    GDestroyNotify user_data_destroy);
+/* 创建GstEGLImageAllocator对象函数，但是不支持内存 map、copy以及其他事情 */
+GstAllocator *gst_egl_image_allocator_new (void);
+
+GstMemory *
+gst_egl_image_allocator_alloc (GstAllocator * allocator,
+                               GstEGLDisplay * display, 
+                               GstVideoGLTextureType type, 
+                               gint width,
+                               gint height, 
+                               gsize * size); /* 这是个返回NULL的空函数 */
+
+GstMemory *
+gst_egl_image_allocator_wrap (GstAllocator * allocator,
+                              GstEGLDisplay * display, 
+                              EGLImageKHR image, 
+                              GstVideoGLTextureType type,
+                              GstMemoryFlags flags, 
+                              gsize size, 
+                              gpointer user_data,
+                              GDestroyNotify user_data_destroy); /* 真正创建GstEGLImageMemory对象的函数  */
+
 
 #define GST_EGL_DISPLAY_CONTEXT_TYPE "gst.egl.EGLDisplay"
 GstContext * gst_context_new_egl_display (GstEGLDisplay * display, gboolean persistent);
