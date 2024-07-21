@@ -174,8 +174,6 @@ void gst_egl_adaptation_destroy_surface (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_destroy_context (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_release_thread (void);
 
-gboolean
-gst_egl_adaptation_create_egl_context (GstEglAdaptationContext * ctx);
 
 #ifndef HAVE_IOS
 EGLContext gst_egl_adaptation_context_get_egl_context (GstEglAdaptationContext * ctx);
@@ -187,12 +185,10 @@ gboolean gst_egl_adaptation_create_native_window (GstEglAdaptationContext
 void gst_egl_adaptation_destroy_native_window (GstEglAdaptationContext * ctx, gpointer * own_window_data, gchar* winsys);
 
 GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext * ctx);
-gboolean gst_egl_adaptation_init_display (GstEglAdaptationContext * ctx, gchar* winsys);
 gboolean gst_egl_adaptation_choose_config (GstEglAdaptationContext * ctx);
 gboolean gst_egl_adaptation_init_surface (GstEglAdaptationContext * ctx, GstVideoFormat format, gboolean tex_external_oes);
 void gst_egl_adaptation_init_exts (GstEglAdaptationContext * ctx);
 gboolean gst_egl_adaptation_update_surface_dimensions (GstEglAdaptationContext * ctx);
-gboolean _gst_egl_choose_config (GstEglAdaptationContext * ctx, gboolean try_only, gint * num_configs);
 
 gboolean got_gl_error (const char *wtf);
 gboolean got_egl_error (const char *wtf);

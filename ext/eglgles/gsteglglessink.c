@@ -145,15 +145,7 @@ static GstFlowReturn gst_eglglessink_render (GstEglGlesSink * sink);
 static GstFlowReturn gst_eglglessink_queue_object (GstEglGlesSink * sink,
     GstMiniObject * obj);
 static inline gboolean egl_init (GstEglGlesSink * eglglessink);
-static const gchar *supportedPlatforms[] = {
-#ifdef USE_EGL_X11
-  "x11",
-#endif
-#ifdef USE_EGL_WAYLAND
- "wayland"
-#endif
-};
-gboolean isPlatformSupported (gchar* winsys);
+
 
 #ifndef HAVE_IOS
 typedef GstBuffer *(*GstEGLImageBufferPoolSendBlockingAllocate) (GstBufferPool *
@@ -464,35 +456,36 @@ gst_egl_image_buffer_pool_init (GstEGLImageBufferPool * pool)
 #define parent_class gst_eglglessink_parent_class
 G_DEFINE_TYPE (GstEglGlesSink, gst_eglglessink, GST_TYPE_VIDEO_SINK);
 
-gboolean isPlatformSupported (gchar* winsys)
-{
-  uint i;
-  for (i = 0; i < (sizeof(supportedPlatforms)/sizeof(gchar*)); i++) {
-    if (g_strcmp0(winsys, supportedPlatforms[i]) == 0) {
-      return TRUE;
-    }
-  }
-
-  return FALSE;
-}
-
-
+/**
+ * @brief: 1. 检查gtk是否初始化
+ *         2. 设定EGLDisplay变量给GstEGLDisplay结构体
+ */
 static inline gboolean
-egl_init (GstEglGlesSink * eglglessink)
-{
+egl_init (GstEglGlesSink * eglglessink) {
+
   GstCaps *caps;
+  GError *error = NULL;
 
-  if (!isPlatformSupported (eglglessink->winsys)) {
-    g_print("Winsys: %s is not supported \n", eglglessink->winsys);
-    GST_ERROR_OBJECT (eglglessink, "Unsupported Window System \n");
-    goto HANDLE_ERROR;
+  /* 如果主程序没有初始化gtk，这里初始化gtk */
+  if (!gtk_init_check())
+    gtk_init ();
+
+  eglglessink->gdk_gl_context = gdk_display_create_gl_context(gdk_display_get_default(), &error);
+  if (error) {
+    g_message ("%s\n",error->message);
+    g_clear_error (&error);
   }
 
-  if (!gst_egl_adaptation_init_display (eglglessink->egl_context, eglglessink->winsys)) {
-    GST_ERROR_OBJECT (eglglessink, "Couldn't init EGL display");
-    goto HANDLE_ERROR;
-  }
+  /* 把新创建的egl_context设定为当前线程上下文 */
+  gdk_gl_context_make_current (eglglessink->gdk_gl_context);
 
+  /* EGLDisplay 包装了一下， ctx->display = display; */
+  eglglessink->egl_context->display = gst_egl_display_new (eglGetCurrentDisplay (), NULL);
+
+  /* 清除当前线程的egl上下文绑定 */
+  gdk_gl_context_clear_current();
+
+  /* 添加支持的媒体类型 */
   caps =
       gst_egl_adaptation_fill_supported_fbuffer_configs
       (eglglessink->egl_context);
@@ -520,18 +513,18 @@ HANDLE_ERROR:
 }
 
 
-
 /**
  * @brief: 处理 GstBuffer， 然后进行渲染
 */
 static gpointer
-render_thread_func (GstEglGlesSink * eglglessink)
-{
+render_thread_func (GstEglGlesSink * eglglessink) {
+
   GstMessage *message;
   GValue val = { 0 };
   GstDataQueueItem *item = NULL;
   GstFlowReturn last_flow = GST_FLOW_OK;
 
+  /* CUDA设定GPU */
   cudaError_t CUerr = cudaSuccess;
   GST_LOG_OBJECT (eglglessink, "SETTING CUDA DEVICE = %d in eglglessink func=%s\n", eglglessink->gpu_id, __func__);
   CUerr = cudaSetDevice(eglglessink->gpu_id);
@@ -540,6 +533,7 @@ render_thread_func (GstEglGlesSink * eglglessink)
     return NULL;
   }
 
+  /* 发送message，告诉应用程序，已经成功 创建流stream线程 */
   g_value_init (&val, GST_TYPE_G_THREAD);
   g_value_set_boxed (&val, g_thread_self ());
   message = gst_message_new_stream_status (GST_OBJECT_CAST (eglglessink),
@@ -552,6 +546,9 @@ render_thread_func (GstEglGlesSink * eglglessink)
   gst_egl_adaptation_bind_API (eglglessink->egl_context);
 
 
+  /**
+   * 如果队列中没有元素，就会阻塞等待（如果设定数据队列为刷新状态，该函数就会立即返回FALSE）
+   */
   while (gst_data_queue_pop (eglglessink->queue, &item)) {
     GstMiniObject *object = item->object;
 
@@ -737,24 +734,16 @@ gst_eglglessink_start (GstEglGlesSink * eglglessink)
 
   GST_DEBUG_OBJECT (eglglessink, "Starting");
 
+  /* 检查渲染线程是否已经被创建，如果处于阻塞状态，发送广播条件，等待线程结束 */
   if (eglglessink->thread) {
     g_cond_broadcast (&eglglessink->render_exit_cond);
     g_thread_join (eglglessink->thread);
     eglglessink->thread = NULL;
   }
 
+  /* 检查egl是否已经初始化完毕 */
   if (!eglglessink->egl_started) {
     GST_ERROR_OBJECT (eglglessink, "EGL uninitialized. Bailing out");
-    goto HANDLE_ERROR;
-  }
-
-  /* 此时没有 X11窗口 创建，所以会执行 */
-  if (!eglglessink->have_window)
-    gst_video_overlay_prepare_window_handle (GST_VIDEO_OVERLAY (eglglessink));
-
-  if (!eglglessink->have_window && !eglglessink->create_window) {
-    GST_ERROR_OBJECT (eglglessink, "Window handle unavailable and we "
-        "were instructed not to create an internal one. Bailing out.");
     goto HANDLE_ERROR;
   }
 
@@ -767,6 +756,7 @@ gst_eglglessink_start (GstEglGlesSink * eglglessink)
     eglglessink->nvbuf_api_version_new = TRUE;
   }
 
+  /* 如果设定为刷新状态，任何传入的数据都会被丢弃，调用数据队列push和pop的阻塞函数会返回FALSE */
   gst_data_queue_set_flushing (eglglessink->queue, FALSE);
 
   GST_LOG_OBJECT (eglglessink, "SETTING CUDA DEVICE = %d in eglglessink func=%s\n", eglglessink->gpu_id, __func__);
@@ -2698,8 +2688,6 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
   gint width = 0;
   gint height = 0;
 
-  g_print ("gst_eglglessink_configure_caps\n");
-
   gst_video_info_init (&info);
   if (!(ret = gst_video_info_from_caps (&info, caps))) {
     GST_ERROR_OBJECT (eglglessink, "Couldn't parse caps");
@@ -2710,6 +2698,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
   GST_VIDEO_SINK_WIDTH (eglglessink) = info.width;
   GST_VIDEO_SINK_HEIGHT (eglglessink) = info.height;
 
+  /* caps 协商 */
   if (eglglessink->configured_caps) {
     GST_DEBUG_OBJECT (eglglessink, "Caps were already set");
     if (gst_caps_can_intersect (caps, eglglessink->configured_caps)) {
@@ -2728,44 +2717,13 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
     eglglessink->configured_caps = NULL;
   }
 
-  /* 获取EGL配置 和 创建 EGL上下文  */
-  if (!gst_egl_adaptation_choose_config (eglglessink->egl_context)) {
-    GST_ERROR_OBJECT (eglglessink, "Couldn't choose EGL config");
-    goto HANDLE_ERROR;
-  }
+  /* 把GdkGLContext中EGLContext设置为当前线程的egl上下文 */
+  gdk_gl_context_make_current (eglglessink->gdk_gl_context);
+
+  eglglessink->egl_context->egl_context = eglGetCurrentContext ();
+  // eglglessink->egl_context->eglglesctx->eglcontext = eglglessink->egl_context->egl_context;
 
   gst_caps_replace (&eglglessink->configured_caps, caps);
-
-  /* By now the application should have set a window
-   * if it meant to do so
-   */
-  // GST_OBJECT_LOCK (eglglessink);
-  // if (!eglglessink->have_window) {
-
-  //   GST_INFO_OBJECT (eglglessink,
-  //       "No window. Will attempt internal window creation");
-  //   if (eglglessink->window_width != 0 && eglglessink->window_height != 0) {
-  //     width = eglglessink->window_width;
-  //     height = eglglessink->window_height;
-  //   } else {
-  //     width = info.width;
-  //     height = info.height;
-  //   }
-  //   if (!gst_eglglessink_create_window (eglglessink, width, height)) {
-  //     GST_ERROR_OBJECT (eglglessink, "Internal window creation failed!");
-  //     GST_OBJECT_UNLOCK (eglglessink);
-  //     goto HANDLE_ERROR;
-  //   }
-  //   eglglessink->using_own_window = TRUE;
-  //   eglglessink->have_window = TRUE;
-  // }
-  // GST_DEBUG_OBJECT (eglglessink, "Using window handle %p",
-  //     (gpointer) eglglessink->egl_context->window);
-  // eglglessink->egl_context->used_window = eglglessink->egl_context->window;
-  // GST_OBJECT_UNLOCK (eglglessink);
-
-  // gst_video_overlay_got_window_handle (GST_VIDEO_OVERLAY (eglglessink),
-  //     (uintptr_t) eglglessink->egl_context->used_window);
 
   /* gl 编译着色器程序、纹理id生成 */
   if (!eglglessink->egl_context->have_surface) {
@@ -2869,7 +2827,7 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 
 /**
  * @brief: 当元素@eglglessink 从 NULL_TO_READY 状态的时候
- *         会调用该函数，初始化 EGL
+ *         
 */
 static gboolean
 gst_eglglessink_open (GstEglGlesSink * eglglessink) {
@@ -2878,6 +2836,7 @@ gst_eglglessink_open (GstEglGlesSink * eglglessink) {
     return FALSE;
   }
 
+  /* 具体还没查看 */
   if (eglglessink->profile) {
     eglglessink->pDeliveryJitter = GstEglAllocJitterTool("frame delivery", 100);
     GstEglJitterToolSetShow(eglglessink->pDeliveryJitter, 0 /*eglglessink->profile*/);
@@ -3090,22 +3049,6 @@ gst_eglglessink_set_property (GObject * object, guint prop_id,
       eglglessink->ivisurf_id = g_value_get_uint (value);
       break;
     /* 自定义属性 */
-    case PROP_EGL_DISPLAY:
-      eglglessink->egl_display = g_value_get_pointer (value);
-      g_print ("PROP       eglglessink->egl_display = %p\n", eglglessink->egl_display);
-      break;
-    case PROP_EGL_CONFIG:
-      eglglessink->egl_config = g_value_get_pointer (value);
-      g_print ("PROP       eglglessink->egl_config = %p\n", eglglessink->egl_config);
-      break;
-    case PROP_EGL_SHARE_CONTEXT:
-      eglglessink->egl_share_context = g_value_get_pointer (value);
-      g_print ("PROP       eglglessink->egl_share_context = %p\n", eglglessink->egl_share_context);
-      break;
-    case PROP_EGL_SHARE_TEXTURE:
-      eglglessink->egl_share_texture = g_value_get_uint (value);
-      g_print ("PROP       eglglessink->egl_share_texture = %d\n", eglglessink->egl_share_texture);
-      break;
 
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -3171,21 +3114,6 @@ gst_eglglessink_get_property (GObject * object, guint prop_id,
     case PROP_IVI_SURF_ID:
       g_value_set_uint (value, eglglessink->ivisurf_id);
       break;
-
-
-    case PROP_EGL_DISPLAY:
-      g_value_set_pointer (value, eglglessink->egl_display);
-      break;
-    case PROP_EGL_CONFIG:
-      g_value_set_pointer (value, eglglessink->egl_config);
-      break;
-    case PROP_EGL_SHARE_CONTEXT:
-      g_value_set_pointer (value, eglglessink->egl_share_context);
-      break;
-    case PROP_EGL_SHARE_TEXTURE:
-      g_value_set_uint (value, eglglessink->egl_share_texture);
-      break;
-
     
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);

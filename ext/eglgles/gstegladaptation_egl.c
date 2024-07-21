@@ -100,100 +100,7 @@ gst_egl_adaptation_init_exts (GstEglAdaptationContext * ctx)
   return;
 }
 
-/**
- * @brief: eglInitialize 初始化
-*/
-gboolean
-gst_egl_adaptation_init_display (GstEglAdaptationContext * ctx, gchar* winsys)
-{
-  GstMessage *msg;
-  GstEglGlesSink *sink = (GstEglGlesSink *) ctx->element;
-  EGLDisplay display = EGL_NO_DISPLAY;
-  GST_DEBUG_OBJECT (ctx->element, "Enter EGL initial configuration");
-  
-  if (!platform_wrapper_init ()) {
-    GST_ERROR_OBJECT (ctx->element, "Couldn't init EGL platform wrapper");
-    goto HANDLE_ERROR;
-  }
 
-  msg =
-      gst_message_new_need_context (GST_OBJECT_CAST (ctx->element),
-      GST_EGL_DISPLAY_CONTEXT_TYPE);
-  gst_element_post_message (GST_ELEMENT_CAST (ctx->element), msg);
-
-  GST_OBJECT_LOCK (ctx->element);
-  if (!ctx->set_display) {
-    GstContext *context;
-
-    GST_OBJECT_UNLOCK (ctx->element);
-
-    
-
-#ifdef USE_EGL_WAYLAND
-    if (g_strcmp0(winsys, "wayland") == 0) {
-      display = eglGetDisplay (platform_initialize_display_wayland());
-    }
-#endif
-
-#ifdef USE_EGL_X11
-    if (g_strcmp0(winsys, "x11") == 0) {
-      // display = eglGetDisplay (sink->display);
-      display = sink->egl_display;
-    }
-#endif
-
-    if (display == EGL_NO_DISPLAY) {
-      GST_ERROR_OBJECT (ctx->element, "Could not get EGL display connection");
-      goto HANDLE_ERROR;        /* No EGL error is set by eglGetDisplay() */
-    }
-
-    /* EGLDisplay 包装了一下， ctx->display = display; */
-    ctx->display = gst_egl_display_new (display, NULL);
-
-    context = gst_context_new_egl_display (ctx->display, FALSE);
-    msg = gst_message_new_have_context (GST_OBJECT (ctx->element), context);
-    gst_element_post_message (GST_ELEMENT_CAST (ctx->element), msg);
-  } else {
-    ctx->display = ctx->set_display;
-    GST_OBJECT_UNLOCK (ctx->element);
-  }
-
-  /* 来自UI的 egl_display 已经被初始化了 */
-  if (!eglInitialize (gst_egl_display_get (ctx->display),
-          &ctx->eglglesctx->egl_major, &ctx->eglglesctx->egl_minor)) {
-    got_egl_error ("eglInitialize");
-    GST_ERROR_OBJECT (ctx->element, "Could not init EGL display connection");
-    goto HANDLE_EGL_ERROR;
-  }
-
-  /* Check against required EGL version
-   * XXX: Need to review the version requirement in terms of the needed API
-   */
-  if (ctx->eglglesctx->egl_major < GST_EGLGLESSINK_EGL_MIN_VERSION) {
-    GST_ERROR_OBJECT (ctx->element, "EGL v%d needed, but you only have v%d.%d",
-        GST_EGLGLESSINK_EGL_MIN_VERSION, ctx->eglglesctx->egl_major,
-        ctx->eglglesctx->egl_minor);
-    goto HANDLE_ERROR;
-  }
-
-  ctx->eglglesctx->egl_major = 3;
-
-  ctx->eglglesctx->egl_minor = 2;
-
-  GST_INFO_OBJECT (ctx->element, "System reports supported EGL version v%d.%d",
-      ctx->eglglesctx->egl_major, ctx->eglglesctx->egl_minor);
-
-  eglBindAPI (EGL_OPENGL_ES_API);
-
-  return TRUE;
-
-  /* Errors */
-HANDLE_EGL_ERROR:
-  GST_ERROR_OBJECT (ctx->element, "EGL call returned error %x", eglGetError ());
-HANDLE_ERROR:
-  GST_ERROR_OBJECT (ctx->element, "Couldn't setup window/surface from handle");
-  return FALSE;
-}
 
 /**
  * @brief: eglMakeCurrent 绑定 EGL 上下文（context）和渲染表面（surface）到当前线程（thread）
@@ -238,15 +145,6 @@ gst_egl_adaptation_context_make_current (GstEglAdaptationContext * ctx,
       return FALSE;
     }
   }
-
-  
-
-  // 我的测试能否绑定成功
-  // glFinish();
-  
-  // glBindTexture(GL_TEXTURE_2D, 1); 
-  // got_egl_error ("glBindTexture");
-  
 
   return TRUE;
 }
@@ -303,38 +201,6 @@ gst_egl_adaptation_context_swap_buffers (GstEglAdaptationContext * ctx, gchar* w
   return ret;
 }
 
-/**
- * @brief: eglChooseConfig 根据 eglChooseConfig 选择配置
- * @param num_configs(out): 给ctx->eglglesctx->config赋值了几组配置
-*/
-gboolean
-_gst_egl_choose_config (GstEglAdaptationContext * ctx, gboolean try_only,
-    gint * num_configs)
-{
-  // EGLint cfg_number;
-  // gboolean ret;
-  // EGLConfig *config = NULL;
-
-  // if (!try_only)
-  //   config = &ctx->eglglesctx->config;
-
-  // ret = eglChooseConfig (gst_egl_display_get (ctx->display),
-  //     eglglessink_RGBA8888_attribs, config, 1, &cfg_number) != EGL_FALSE;
-
-  // if (!ret)
-  //   got_egl_error ("eglChooseConfig");
-  // else if (num_configs)
-  //   *num_configs = cfg_number;
-  // return ret;
-
-  GstEglGlesSink *sink = (GstEglGlesSink *)ctx->element;
-
-  ctx->eglglesctx->config = sink->egl_config;
-  if (num_configs)
-    *num_configs = 1;
-
-  return TRUE;
-}
 
 /**
  * @brief: eglCreateWindowSurface 创建一个egl表面
@@ -435,45 +301,6 @@ gst_egl_adaptation_query_par (GstEglAdaptationContext * ctx)
     }
   }
 }
-
-/**
- * @brief: 创建 eglCreateContext 上下文
-*/
-gboolean
-gst_egl_adaptation_create_egl_context (GstEglAdaptationContext * ctx)
-{
-  // EGLint con_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-
-  EGLint con_attribs[] = {
-    EGL_CONTEXT_MAJOR_VERSION, 3, 
-    EGL_CONTEXT_MINOR_VERSION, 2, 
-    EGL_NONE 
-  };
-  GstEglGlesSink *sink = (GstEglGlesSink *)ctx->element;
-
-  ctx->eglglesctx->eglcontext =
-      eglCreateContext (gst_egl_display_get (ctx->display),
-      ctx->eglglesctx->config, sink->egl_share_context, con_attribs);
-  
-  ctx->egl_context = ctx->eglglesctx->eglcontext;
-  
-  g_print ("%s:  egl_display = %p\n",__func__, gst_egl_display_get (ctx->display));
-  g_print ("%s:  egl_config = %p\n",__func__, ctx->eglglesctx->config);
-  g_print ("%s:  egl_context = %p\n",__func__, sink->egl_share_context);
-  g_print ("%s: NEW egl_context = %p\n\n",__func__, ctx->eglglesctx->eglcontext);
-
-  if (ctx->eglglesctx->eglcontext == EGL_NO_CONTEXT) {
-    GST_ERROR_OBJECT (ctx->element, "EGL call returned error %x",
-        eglGetError ());
-    return FALSE;
-  }
-
-  GST_DEBUG_OBJECT (ctx->element, "EGL Context: %p",
-      ctx->eglglesctx->eglcontext);
-
-  return TRUE;
-}
-
 
 /**
  * @brief: 通过 @ctx 获取egl上下文

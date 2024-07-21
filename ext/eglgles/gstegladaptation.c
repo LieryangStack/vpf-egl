@@ -716,11 +716,8 @@ gst_egl_adaptation_init_surface (GstEglAdaptationContext * ctx,
     } else {
       target = GL_TEXTURE_2D;
     }
-    GstEglGlesSink *sink = (GstEglGlesSink *)ctx->element;
-    // glGenTextures (ctx->n_textures, ctx->texture);
-    ctx->texture[0] = sink->egl_share_texture;
+    glGenTextures (ctx->n_textures, ctx->texture);
 
-    g_print ("ctx->texture[0] = %d\n", ctx->texture[0]);
     if (got_gl_error ("glGenTextures"))
       goto HANDLE_ERROR_LOCKED;
 
@@ -759,39 +756,6 @@ HANDLE_ERROR:
   return FALSE;
 }
 
-/**
- * @brief: eglChooseConfig 选择配置
-*/
-gboolean
-gst_egl_adaptation_choose_config (GstEglAdaptationContext * ctx)
-{
-  gint egl_configs;
-
-  /* 获取 egl 配置 */
-  if (!_gst_egl_choose_config (ctx, FALSE, &egl_configs)) {
-    GST_ERROR_OBJECT (ctx->element, "eglChooseConfig failed");
-    goto HANDLE_ERROR;
-  }
-
-  if (egl_configs < 1) {
-    GST_ERROR_OBJECT (ctx->element,
-        "Could not find matching framebuffer config");
-    goto HANDLE_ERROR;
-  }
-
-  /* 创建 egl 上下文 */
-  if (!gst_egl_adaptation_create_egl_context (ctx)) {
-    GST_ERROR_OBJECT (ctx->element, "Error getting context, eglCreateContext");
-    goto HANDLE_ERROR;
-  }
-
-  return TRUE;
-
-  /* Errors */
-HANDLE_ERROR:
-  GST_ERROR_OBJECT (ctx->element, "Couldn't choose an usable config");
-  return FALSE;
-}
 
 /**
  * @brief: 给GstEglAdaptationContext结构体申请内存
