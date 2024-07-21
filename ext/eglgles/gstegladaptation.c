@@ -62,9 +62,8 @@ _gst_video_format_new_template_caps (GstVideoFormat format)
 
 
 GstCaps *
-gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *
-    ctx)
-{
+gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *ctx) {
+
   GstCaps *caps = NULL, *copy1, *copy2;
   guint i, n;
 
@@ -75,42 +74,8 @@ gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *
 
   gst_caps_append (caps,
       _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRA));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ARGB));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_ABGR));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBx));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xRGB));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_xBGR));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_AYUV));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y444));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_YV12));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV21));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y42B));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_Y41B));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB16));
+
+  /* 暂时没有添加，然后支持更多视频格式 */
 
   copy1 = gst_caps_copy (caps);
   copy2 = gst_caps_copy (caps);
@@ -190,8 +155,6 @@ gst_egl_adaptation_context_new (GstElement * element)
   return ctx;
 }
 
-
-
 /**
  * 选择egl配置组时候所需的属性信息
 */
@@ -214,8 +177,8 @@ static const EGLint eglglessink_RGBA8888_attribs[] = {
 GstBuffer *
 gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
     GstEGLDisplay * display, EGLContext eglcontext, GstVideoFormat format,
-    gint width, gint height)
-{
+    gint width, gint height) {
+
   GstEGLGLESImageData *data = NULL;
   GstBuffer *buffer;
   GstVideoInfo info;
