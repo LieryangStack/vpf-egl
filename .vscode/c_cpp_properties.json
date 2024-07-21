@@ -11,10 +11,8 @@
               "/opt/gtk4/include/harfbuzz",
               "/opt/gtk4/include/pango-1.0",
               "/opt/gtk4/include/fribidi",
-              "/usr/include/fribidi",
               "/opt/gtk4/include/harfbuzz",
               "/opt/gtk4/include/gdk-pixbuf-2.0",
-              "/usr/include/gdk-pixbuf-2.0",
               "/opt/gtk4/include",
               "/opt/gtk4/include/cairo",
               "/opt/gtk4/include/graphene-1.0",
@@ -34,9 +32,7 @@
               "/opt/src/libadwaita-1.6.alpha",
               "/usr/src/glibc/glibc-2.35",
               "/usr/include/x86_64-linux-gnu",
-              "/usr/include/sysprof-4",
-              "/opt/gstreamer/include/graphene-1.0",
-              "/opt/src/gtk-4.15.3/builddir"
+              "/usr/include/sysprof-4"
           ],
           "compilerPath": "/usr/bin/gcc",
           "cStandard": "${default}",

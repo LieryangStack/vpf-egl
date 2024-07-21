@@ -2874,7 +2874,6 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps)
 static gboolean
 gst_eglglessink_open (GstEglGlesSink * eglglessink) {
 
-
   if (!egl_init (eglglessink)) {
     return FALSE;
   }
