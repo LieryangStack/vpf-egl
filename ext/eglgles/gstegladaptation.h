@@ -164,14 +164,6 @@ void gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_init (GstEglAdaptationContext * ctx);
 void gst_egl_adaptation_deinit (GstEglAdaptationContext * ctx);
 
-gboolean gst_egl_adaptation_create_surface (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_query_buffer_preserved (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_query_par (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_destroy_surface (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_destroy_context (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_release_thread (void);
-
-
 #ifndef HAVE_IOS
 EGLContext gst_egl_adaptation_context_get_egl_context (GstEglAdaptationContext * ctx);
 #endif

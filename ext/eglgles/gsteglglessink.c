@@ -581,8 +581,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         buffer =
             gst_egl_image_allocator_alloc_eglimage (GST_EGL_IMAGE_BUFFER_POOL
             (eglglessink->pool)->allocator, eglglessink->egl_context->display,
-            gst_egl_adaptation_context_get_egl_context
-            (eglglessink->egl_context), format, width, height);
+            eglGetCurrentContext(), format, width, height);
         g_value_init (&v, G_TYPE_POINTER);
         g_value_set_pointer (&v, buffer);
         gst_structure_set_value (s, "buffer", &v);
@@ -699,14 +698,14 @@ render_thread_func (GstEglGlesSink * eglglessink) {
     gst_eglglessink_cuda_cleanup(eglglessink);
   }
 
-  gst_egl_adaptation_cleanup (eglglessink->egl_context);
+  // gst_egl_adaptation_cleanup (eglglessink->egl_context);
 
   if (eglglessink->configured_caps) {
     gst_caps_unref (eglglessink->configured_caps);
     eglglessink->configured_caps = NULL;
   }
 
-  gst_egl_adaptation_release_thread ();
+  // gst_egl_adaptation_release_thread ();
 
   g_value_init (&val, GST_TYPE_G_THREAD);
   g_value_set_boxed (&val, g_thread_self ());
@@ -1994,217 +1993,217 @@ HANDLE_ERROR:
 static GstFlowReturn
 gst_eglglessink_render (GstEglGlesSink * eglglessink)
 {
-  guint dar_n, dar_d;
-  gint i;
+//   guint dar_n, dar_d;
+//   gint i;
 
-  /* If no one has set a display rectangle on us initialize
-   * a sane default. According to the docs on the xOverlay
-   * interface we are supposed to fill the overlay 100%. We
-   * do this trying to take PAR/DAR into account unless the
-   * calling party explicitly ask us not to by setting
-   * force_aspect_ratio to FALSE.
-   */
-  if (gst_egl_adaptation_update_surface_dimensions (eglglessink->egl_context) ||
-      eglglessink->render_region_changed ||
-      !eglglessink->display_region.w || !eglglessink->display_region.h ||
-      eglglessink->crop_changed) {
-    GST_OBJECT_LOCK (eglglessink);
+//   /* If no one has set a display rectangle on us initialize
+//    * a sane default. According to the docs on the xOverlay
+//    * interface we are supposed to fill the overlay 100%. We
+//    * do this trying to take PAR/DAR into account unless the
+//    * calling party explicitly ask us not to by setting
+//    * force_aspect_ratio to FALSE.
+//    */
+//   if (gst_egl_adaptation_update_surface_dimensions (eglglessink->egl_context) ||
+//       eglglessink->render_region_changed ||
+//       !eglglessink->display_region.w || !eglglessink->display_region.h ||
+//       eglglessink->crop_changed) {
+//     GST_OBJECT_LOCK (eglglessink);
 
-    if (!eglglessink->render_region_user) {
-      eglglessink->render_region.x = 0;
-      eglglessink->render_region.y = 0;
-      eglglessink->render_region.w = eglglessink->egl_context->surface_width / eglglessink->rows;
-      eglglessink->render_region.h = eglglessink->egl_context->surface_height / eglglessink->columns;
-    }
-    eglglessink->render_region_changed = FALSE;
-    eglglessink->crop_changed = FALSE;
+//     if (!eglglessink->render_region_user) {
+//       eglglessink->render_region.x = 0;
+//       eglglessink->render_region.y = 0;
+//       eglglessink->render_region.w = eglglessink->egl_context->surface_width / eglglessink->rows;
+//       eglglessink->render_region.h = eglglessink->egl_context->surface_height / eglglessink->columns;
+//     }
+//     eglglessink->render_region_changed = FALSE;
+//     eglglessink->crop_changed = FALSE;
 
-    if (!eglglessink->force_aspect_ratio) {
-      eglglessink->display_region.x = 0;
-      eglglessink->display_region.y = 0;
-      eglglessink->display_region.w = eglglessink->render_region.w;
-      eglglessink->display_region.h = eglglessink->render_region.h;
-    } else {
-      GstVideoRectangle frame;
+//     if (!eglglessink->force_aspect_ratio) {
+//       eglglessink->display_region.x = 0;
+//       eglglessink->display_region.y = 0;
+//       eglglessink->display_region.w = eglglessink->render_region.w;
+//       eglglessink->display_region.h = eglglessink->render_region.h;
+//     } else {
+//       GstVideoRectangle frame;
 
-      frame.x = 0;
-      frame.y = 0;
+//       frame.x = 0;
+//       frame.y = 0;
 
-      if (!gst_video_calculate_display_ratio (&dar_n, &dar_d,
-              eglglessink->crop.w, eglglessink->crop.h,
-              eglglessink->configured_info.par_n,
-              eglglessink->configured_info.par_d,
-              eglglessink->egl_context->pixel_aspect_ratio_n,
-              eglglessink->egl_context->pixel_aspect_ratio_d)) {
-        GST_WARNING_OBJECT (eglglessink, "Could not compute resulting DAR");
-        frame.w = eglglessink->crop.w;
-        frame.h = eglglessink->crop.h;
-      } else {
-        /* Find suitable matching new size acording to dar & par
-         * rationale for prefering leaving the height untouched
-         * comes from interlacing considerations.
-         * XXX: Move this to gstutils?
-         */
-        if (eglglessink->crop.h % dar_d == 0) {
-          frame.w =
-              gst_util_uint64_scale_int (eglglessink->crop.h, dar_n, dar_d);
-          frame.h = eglglessink->crop.h;
-        } else if (eglglessink->crop.w % dar_n == 0) {
-          frame.h =
-              gst_util_uint64_scale_int (eglglessink->crop.w, dar_d, dar_n);
-          frame.w = eglglessink->crop.w;
-        } else {
-          /* Neither width nor height can be precisely scaled.
-           * Prefer to leave height untouched. See comment above.
-           */
-          frame.w =
-              gst_util_uint64_scale_int (eglglessink->crop.h, dar_n, dar_d);
-          frame.h = eglglessink->crop.h;
-        }
-      }
+//       if (!gst_video_calculate_display_ratio (&dar_n, &dar_d,
+//               eglglessink->crop.w, eglglessink->crop.h,
+//               eglglessink->configured_info.par_n,
+//               eglglessink->configured_info.par_d,
+//               eglglessink->egl_context->pixel_aspect_ratio_n,
+//               eglglessink->egl_context->pixel_aspect_ratio_d)) {
+//         GST_WARNING_OBJECT (eglglessink, "Could not compute resulting DAR");
+//         frame.w = eglglessink->crop.w;
+//         frame.h = eglglessink->crop.h;
+//       } else {
+//         /* Find suitable matching new size acording to dar & par
+//          * rationale for prefering leaving the height untouched
+//          * comes from interlacing considerations.
+//          * XXX: Move this to gstutils?
+//          */
+//         if (eglglessink->crop.h % dar_d == 0) {
+//           frame.w =
+//               gst_util_uint64_scale_int (eglglessink->crop.h, dar_n, dar_d);
+//           frame.h = eglglessink->crop.h;
+//         } else if (eglglessink->crop.w % dar_n == 0) {
+//           frame.h =
+//               gst_util_uint64_scale_int (eglglessink->crop.w, dar_d, dar_n);
+//           frame.w = eglglessink->crop.w;
+//         } else {
+//           /* Neither width nor height can be precisely scaled.
+//            * Prefer to leave height untouched. See comment above.
+//            */
+//           frame.w =
+//               gst_util_uint64_scale_int (eglglessink->crop.h, dar_n, dar_d);
+//           frame.h = eglglessink->crop.h;
+//         }
+//       }
 
-      gst_video_sink_center_rect (frame, eglglessink->render_region,
-          &eglglessink->display_region, TRUE);
-    }
+//       gst_video_sink_center_rect (frame, eglglessink->render_region,
+//           &eglglessink->display_region, TRUE);
+//     }
 
-    glViewport (eglglessink->render_region.x +
-                    (eglglessink->change_port % eglglessink->rows) * eglglessink->render_region.w,
-                eglglessink->egl_context->surface_height - eglglessink->render_region.h -
-                    (eglglessink->render_region.y +
-                        ((eglglessink->change_port / eglglessink->columns) % eglglessink->columns) *
-                            eglglessink->render_region.h),
-                eglglessink->render_region.w,
-                eglglessink->render_region.h);
+//     glViewport (eglglessink->render_region.x +
+//                     (eglglessink->change_port % eglglessink->rows) * eglglessink->render_region.w,
+//                 eglglessink->egl_context->surface_height - eglglessink->render_region.h -
+//                     (eglglessink->render_region.y +
+//                         ((eglglessink->change_port / eglglessink->columns) % eglglessink->columns) *
+//                             eglglessink->render_region.h),
+//                 eglglessink->render_region.w,
+//                 eglglessink->render_region.h);
 
-    /* Clear the surface once if its content is preserved */
-    if (eglglessink->egl_context->buffer_preserved ||
-        eglglessink->change_port % (eglglessink->rows * eglglessink->columns) == 0) {
-      glClearColor (0.0, 0.0, 0.0, 1.0);
-      glClear (GL_COLOR_BUFFER_BIT);
-      eglglessink->egl_context->buffer_preserved = FALSE;
-    }
+//     /* Clear the surface once if its content is preserved */
+//     if (eglglessink->egl_context->buffer_preserved ||
+//         eglglessink->change_port % (eglglessink->rows * eglglessink->columns) == 0) {
+//       glClearColor (0.0, 0.0, 0.0, 1.0);
+//       glClear (GL_COLOR_BUFFER_BIT);
+//       eglglessink->egl_context->buffer_preserved = FALSE;
+//     }
 
-    if (!gst_eglglessink_setup_vbo (eglglessink)) {
-      GST_OBJECT_UNLOCK (eglglessink);
-      GST_ERROR_OBJECT (eglglessink, "VBO setup failed");
-      goto HANDLE_ERROR;
-    }
-    GST_OBJECT_UNLOCK (eglglessink);
-  }
+//     if (!gst_eglglessink_setup_vbo (eglglessink)) {
+//       GST_OBJECT_UNLOCK (eglglessink);
+//       GST_ERROR_OBJECT (eglglessink, "VBO setup failed");
+//       goto HANDLE_ERROR;
+//     }
+//     GST_OBJECT_UNLOCK (eglglessink);
+//   }
 
-  if (!eglglessink->egl_context->buffer_preserved) {
-    /* Draw black borders */
-    GST_DEBUG_OBJECT (eglglessink, "Drawing black border 1");
-    glUseProgram (eglglessink->egl_context->glslprogram[1]);
+//   if (!eglglessink->egl_context->buffer_preserved) {
+//     /* Draw black borders */
+//     GST_DEBUG_OBJECT (eglglessink, "Drawing black border 1");
+//     glUseProgram (eglglessink->egl_context->glslprogram[1]);
 
-    glEnableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
-    if (got_gl_error ("glEnableVertexAttribArray"))
-      goto HANDLE_ERROR;
+//     glEnableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
+//     if (got_gl_error ("glEnableVertexAttribArray"))
+//       goto HANDLE_ERROR;
 
-    glVertexAttribPointer (eglglessink->egl_context->position_loc[1], 3,
-        GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (8 * sizeof (coord5)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
+//     glVertexAttribPointer (eglglessink->egl_context->position_loc[1], 3,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (8 * sizeof (coord5)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
 
-    glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
-    if (got_gl_error ("glDrawElements"))
-      goto HANDLE_ERROR;
+//     glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
+//     if (got_gl_error ("glDrawElements"))
+//       goto HANDLE_ERROR;
 
-    GST_DEBUG_OBJECT (eglglessink, "Drawing black border 2");
+//     GST_DEBUG_OBJECT (eglglessink, "Drawing black border 2");
 
-    glVertexAttribPointer (eglglessink->egl_context->position_loc[1], 3,
-        GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (12 * sizeof (coord5)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
+//     glVertexAttribPointer (eglglessink->egl_context->position_loc[1], 3,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (12 * sizeof (coord5)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
 
-    glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
-    if (got_gl_error ("glDrawElements"))
-      goto HANDLE_ERROR;
+//     glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
+//     if (got_gl_error ("glDrawElements"))
+//       goto HANDLE_ERROR;
 
-    glDisableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
-  }
+//     glDisableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
+//   }
 
-  /* Draw video frame */
-  GST_DEBUG_OBJECT (eglglessink, "Drawing video frame");
+//   /* Draw video frame */
+//   GST_DEBUG_OBJECT (eglglessink, "Drawing video frame");
 
-  glUseProgram (eglglessink->egl_context->glslprogram[0]);
+//   glUseProgram (eglglessink->egl_context->glslprogram[0]);
 
-  glUniform2f (eglglessink->egl_context->tex_scale_loc[0][0],
-      eglglessink->stride[0], 1);
-  glUniform2f (eglglessink->egl_context->tex_scale_loc[0][1],
-      eglglessink->stride[1], 1);
-  glUniform2f (eglglessink->egl_context->tex_scale_loc[0][2],
-      eglglessink->stride[2], 1);
+//   glUniform2f (eglglessink->egl_context->tex_scale_loc[0][0],
+//       eglglessink->stride[0], 1);
+//   glUniform2f (eglglessink->egl_context->tex_scale_loc[0][1],
+//       eglglessink->stride[1], 1);
+//   glUniform2f (eglglessink->egl_context->tex_scale_loc[0][2],
+//       eglglessink->stride[2], 1);
 
-  for (i = 0; i < eglglessink->egl_context->n_textures; i++) {
-    glUniform1i (eglglessink->egl_context->tex_loc[0][i], i);
-    if (got_gl_error ("glUniform1i"))
-      goto HANDLE_ERROR;
-  }
+//   for (i = 0; i < eglglessink->egl_context->n_textures; i++) {
+//     glUniform1i (eglglessink->egl_context->tex_loc[0][i], i);
+//     if (got_gl_error ("glUniform1i"))
+//       goto HANDLE_ERROR;
+//   }
 
-  glEnableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
-  if (got_gl_error ("glEnableVertexAttribArray"))
-    goto HANDLE_ERROR;
+//   glEnableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
+//   if (got_gl_error ("glEnableVertexAttribArray"))
+//     goto HANDLE_ERROR;
 
-  glEnableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
-  if (got_gl_error ("glEnableVertexAttribArray"))
-    goto HANDLE_ERROR;
+//   glEnableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
+//   if (got_gl_error ("glEnableVertexAttribArray"))
+//     goto HANDLE_ERROR;
 
-  if (eglglessink->orientation ==
-      GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL) {
-    glVertexAttribPointer (eglglessink->egl_context->position_loc[0], 3,
-        GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (0 * sizeof (coord5)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
+//   if (eglglessink->orientation ==
+//       GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL) {
+//     glVertexAttribPointer (eglglessink->egl_context->position_loc[0], 3,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (0 * sizeof (coord5)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
 
-    glVertexAttribPointer (eglglessink->egl_context->texpos_loc[0], 2,
-        GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (3 * sizeof (gfloat)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
-  } else if (eglglessink->orientation ==
-      GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_FLIP) {
-    glVertexAttribPointer (eglglessink->egl_context->position_loc[0], 3,
-        GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (4 * sizeof (coord5)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
+//     glVertexAttribPointer (eglglessink->egl_context->texpos_loc[0], 2,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (3 * sizeof (gfloat)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
+//   } else if (eglglessink->orientation ==
+//       GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_FLIP) {
+//     glVertexAttribPointer (eglglessink->egl_context->position_loc[0], 3,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5), (gpointer) (4 * sizeof (coord5)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
 
-    glVertexAttribPointer (eglglessink->egl_context->texpos_loc[0], 2,
-        GL_FLOAT, GL_FALSE, sizeof (coord5),
-        (gpointer) (4 * sizeof (coord5) + 3 * sizeof (gfloat)));
-    if (got_gl_error ("glVertexAttribPointer"))
-      goto HANDLE_ERROR;
-  } else {
-    g_assert_not_reached ();
-  }
+//     glVertexAttribPointer (eglglessink->egl_context->texpos_loc[0], 2,
+//         GL_FLOAT, GL_FALSE, sizeof (coord5),
+//         (gpointer) (4 * sizeof (coord5) + 3 * sizeof (gfloat)));
+//     if (got_gl_error ("glVertexAttribPointer"))
+//       goto HANDLE_ERROR;
+//   } else {
+//     g_assert_not_reached ();
+//   }
 
-  glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
-  if (got_gl_error ("glDrawElements"))
-    goto HANDLE_ERROR;
+//   glDrawElements (GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, 0);
+//   if (got_gl_error ("glDrawElements"))
+//     goto HANDLE_ERROR;
 
-  glDisableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
-  glDisableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
+//   glDisableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
+//   glDisableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
 
-  // if (!gst_egl_adaptation_context_swap_buffers (eglglessink->egl_context, eglglessink->winsys,
-  //             &eglglessink->own_window_data, eglglessink->last_uploaded_buffer,
-  //             eglglessink->show_latency)) {
-  //   goto HANDLE_ERROR;
-  // }
+//   // if (!gst_egl_adaptation_context_swap_buffers (eglglessink->egl_context, eglglessink->winsys,
+//   //             &eglglessink->own_window_data, eglglessink->last_uploaded_buffer,
+//   //             eglglessink->show_latency)) {
+//   //   goto HANDLE_ERROR;
+//   // }
 
-  if (eglglessink->profile)
-    GstEglJitterToolAddPoint(eglglessink->pDeliveryJitter);
+//   if (eglglessink->profile)
+//     GstEglJitterToolAddPoint(eglglessink->pDeliveryJitter);
 
-  GST_DEBUG_OBJECT (eglglessink, "Succesfully rendered 1 frame");
-  // g_print ("Succesfully rendered 1 frame\n");
-  return GST_FLOW_OK;
+//   GST_DEBUG_OBJECT (eglglessink, "Succesfully rendered 1 frame");
+//   // g_print ("Succesfully rendered 1 frame\n");
+//   return GST_FLOW_OK;
 
-HANDLE_ERROR:
-  glDisableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
-  glDisableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
-  glDisableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
+// HANDLE_ERROR:
+//   glDisableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
+//   glDisableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
+//   glDisableVertexAttribArray (eglglessink->egl_context->position_loc[1]);
 
-  GST_ERROR_OBJECT (eglglessink, "Rendering disabled for this frame");
+//   GST_ERROR_OBJECT (eglglessink, "Rendering disabled for this frame");
 
-  return GST_FLOW_ERROR;
+//   return GST_FLOW_ERROR;
 }
 
 
@@ -2617,8 +2616,6 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
 {
   gboolean ret = TRUE;
   GstVideoInfo info;
-  gint width = 0;
-  gint height = 0;
 
   gst_video_info_init (&info);
   if (!(ret = gst_video_info_from_caps (&info, caps))) {
@@ -2644,7 +2641,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
     if (eglglessink->using_cuda) {
       gst_eglglessink_cuda_cleanup(eglglessink);
     }
-    gst_egl_adaptation_cleanup (eglglessink->egl_context);
+    // gst_egl_adaptation_cleanup (eglglessink->egl_context);
     gst_caps_unref (eglglessink->configured_caps);
     eglglessink->configured_caps = NULL;
   }
@@ -2653,20 +2650,19 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
   gdk_gl_context_make_current (eglglessink->gdk_gl_context);
 
   eglglessink->egl_context->egl_context = eglGetCurrentContext ();
-  // eglglessink->egl_context->eglglesctx->eglcontext = eglglessink->egl_context->egl_context;
 
   gst_caps_replace (&eglglessink->configured_caps, caps);
 
   /* gl 编译着色器程序、纹理id生成 */
-  if (!eglglessink->egl_context->have_surface) {
-    if (!gst_egl_adaptation_init_surface (eglglessink->egl_context,
-            eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf)) {
-      GST_ERROR_OBJECT (eglglessink, "Couldn't init EGL surface from window");
-      goto HANDLE_ERROR;
-    }
-  }
+  // if (!eglglessink->egl_context->have_surface) {
+  //   if (!gst_egl_adaptation_init_surface (eglglessink->egl_context,
+  //           eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf)) {
+  //     GST_ERROR_OBJECT (eglglessink, "Couldn't init EGL surface from window");
+  //     goto HANDLE_ERROR;
+  //   }
+  // }
 
-  gst_egl_adaptation_init_exts (eglglessink->egl_context);
+  // gst_egl_adaptation_init_exts (eglglessink->egl_context);
 
   /* gl纹理创建CUDA访问句柄 */
   if (eglglessink->using_cuda) {
@@ -2904,7 +2900,7 @@ gst_eglglessink_finalize (GObject * object)
   g_cond_clear (&eglglessink->render_exit_cond);
   g_mutex_clear (&eglglessink->render_lock);
 
-  gst_egl_adaptation_context_free (eglglessink->egl_context);
+  // gst_egl_adaptation_context_free (eglglessink->egl_context);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
