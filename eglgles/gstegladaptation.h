@@ -133,24 +133,11 @@ void gst_egl_adaption_init (void);
 
 GstEglAdaptationContext * gst_egl_adaptation_context_new (GstElement * element);
 void gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_init (GstEglAdaptationContext * ctx);
-void gst_egl_adaptation_deinit (GstEglAdaptationContext * ctx);
 
 GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext * ctx);
 
 gboolean got_gl_error (const char *wtf);
 gboolean got_egl_error (const char *wtf);
-
-gboolean gst_egl_adaptation_context_make_current (GstEglAdaptationContext * ctx, gboolean bind);
-void gst_egl_adaptation_cleanup (GstEglAdaptationContext * ctx);
-
-void gst_egl_adaptation_bind_API (GstEglAdaptationContext * ctx);
-
-gboolean gst_egl_adaptation_context_swap_buffers (GstEglAdaptationContext * ctx, gchar* winsys, gpointer * own_window_data, GstBuffer *buf, gboolean show_latency);
-
-gboolean gst_egl_adaptation_reset_window (GstEglAdaptationContext * ctx, GstVideoFormat format, gboolean tex_external_oes);
-
-
 
 /* TODO: The goal is to move this function to gstegl lib (or
  * splitted between gstegl lib and gstgl lib) in order to be used in

@@ -120,8 +120,6 @@ gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
 
 
 /* Utility */
-static gboolean 
-gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink);
 static gboolean
 gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps);
 static gboolean
@@ -387,16 +385,13 @@ gst_egl_image_buffer_pool_acquire_buffer (GstBufferPool * bpool,
 
   pool = GST_EGL_IMAGE_BUFFER_POOL (bpool);
 
-  /* XXX: Don't return the memory we just rendered, glEGLImageTargetTexture2DOES()
-   * keeps the EGLImage unmappable until the next one is uploaded
-   */
+  /* XXX: 不要返回我们刚刚渲染的内存，glEGLImageTargetTexture2DOES()
+  * 保持 EGLImage 不可映射，直到下一个图像被上传
+  */
   if (*buffer && *buffer == pool->last_buffer) {
     GstBuffer *oldbuf = *buffer;
 
-    ret =
-        GST_BUFFER_POOL_CLASS
-        (gst_egl_image_buffer_pool_parent_class)->acquire_buffer (bpool,
-        buffer, params);
+    ret = GST_BUFFER_POOL_CLASS (gst_egl_image_buffer_pool_parent_class)->acquire_buffer (bpool, buffer, params);
     gst_object_replace ((GstObject **) & oldbuf->pool, (GstObject *) pool);
     gst_buffer_unref (oldbuf);
   }
@@ -804,207 +799,6 @@ gst_eglglessink_stop (GstEglGlesSink * eglglessink)
   GST_DEBUG_OBJECT (eglglessink, "Stopped");
 
   return TRUE;
-}
-
-
-static gboolean
-gst_eglglessink_setup_vbo (GstEglGlesSink * eglglessink)
-{
-  gdouble render_width, render_height;
-  gdouble texture_width, texture_height;
-  gdouble x1, x2, y1, y2;
-  gdouble tx1, tx2, ty1, ty2;
-
-  GST_INFO_OBJECT (eglglessink, "VBO setup. have_vbo:%d",
-      eglglessink->egl_context->have_vbo);
-
-  if (eglglessink->egl_context->have_vbo) {
-    glDeleteBuffers (1, &eglglessink->egl_context->position_buffer);
-    glDeleteBuffers (1, &eglglessink->egl_context->index_buffer);
-    eglglessink->egl_context->have_vbo = FALSE;
-  }
-
-  render_width = eglglessink->render_region.w;
-  render_height = eglglessink->render_region.h;
-
-  texture_width = eglglessink->configured_info.width;
-  texture_height = eglglessink->configured_info.height;
-
-  GST_DEBUG_OBJECT (eglglessink, "Performing VBO setup");
-
-  x1 = (eglglessink->display_region.x / render_width) * 2.0 - 1;
-  y1 = (eglglessink->display_region.y / render_height) * 2.0 - 1;
-  x2 = ((eglglessink->display_region.x +
-          eglglessink->display_region.w) / render_width) * 2.0 - 1;
-  y2 = ((eglglessink->display_region.y +
-          eglglessink->display_region.h) / render_height) * 2.0 - 1;
-
-  tx1 = (eglglessink->crop.x / texture_width);
-  tx2 = ((eglglessink->crop.x + eglglessink->crop.w) / texture_width);
-  ty1 = (eglglessink->crop.y / texture_height);
-  ty2 = ((eglglessink->crop.y + eglglessink->crop.h) / texture_height);
-
-  /* X-normal, Y-normal orientation */
-  eglglessink->egl_context->position_array[0].x = x2;
-  eglglessink->egl_context->position_array[0].y = y2;
-  eglglessink->egl_context->position_array[0].z = 0;
-  eglglessink->egl_context->position_array[0].a = tx2;
-  eglglessink->egl_context->position_array[0].b = ty1;
-
-  eglglessink->egl_context->position_array[1].x = x2;
-  eglglessink->egl_context->position_array[1].y = y1;
-  eglglessink->egl_context->position_array[1].z = 0;
-  eglglessink->egl_context->position_array[1].a = tx2;
-  eglglessink->egl_context->position_array[1].b = ty2;
-
-  eglglessink->egl_context->position_array[2].x = x1;
-  eglglessink->egl_context->position_array[2].y = y2;
-  eglglessink->egl_context->position_array[2].z = 0;
-  eglglessink->egl_context->position_array[2].a = tx1;
-  eglglessink->egl_context->position_array[2].b = ty1;
-
-  eglglessink->egl_context->position_array[3].x = x1;
-  eglglessink->egl_context->position_array[3].y = y1;
-  eglglessink->egl_context->position_array[3].z = 0;
-  eglglessink->egl_context->position_array[3].a = tx1;
-  eglglessink->egl_context->position_array[3].b = ty2;
-
-  /* X-normal, Y-flip orientation */
-  eglglessink->egl_context->position_array[4 + 0].x = x2;
-  eglglessink->egl_context->position_array[4 + 0].y = y2;
-  eglglessink->egl_context->position_array[4 + 0].z = 0;
-  eglglessink->egl_context->position_array[4 + 0].a = tx2;
-  eglglessink->egl_context->position_array[4 + 0].b = ty2;
-
-  eglglessink->egl_context->position_array[4 + 1].x = x2;
-  eglglessink->egl_context->position_array[4 + 1].y = y1;
-  eglglessink->egl_context->position_array[4 + 1].z = 0;
-  eglglessink->egl_context->position_array[4 + 1].a = tx2;
-  eglglessink->egl_context->position_array[4 + 1].b = ty1;
-
-  eglglessink->egl_context->position_array[4 + 2].x = x1;
-  eglglessink->egl_context->position_array[4 + 2].y = y2;
-  eglglessink->egl_context->position_array[4 + 2].z = 0;
-  eglglessink->egl_context->position_array[4 + 2].a = tx1;
-  eglglessink->egl_context->position_array[4 + 2].b = ty2;
-
-  eglglessink->egl_context->position_array[4 + 3].x = x1;
-  eglglessink->egl_context->position_array[4 + 3].y = y1;
-  eglglessink->egl_context->position_array[4 + 3].z = 0;
-  eglglessink->egl_context->position_array[4 + 3].a = tx1;
-  eglglessink->egl_context->position_array[4 + 3].b = ty1;
-
-
-  if (eglglessink->display_region.x == 0) {
-    /* Borders top/bottom */
-
-    eglglessink->egl_context->position_array[8 + 0].x = 1;
-    eglglessink->egl_context->position_array[8 + 0].y = 1;
-    eglglessink->egl_context->position_array[8 + 0].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 1].x = x2;
-    eglglessink->egl_context->position_array[8 + 1].y = y2;
-    eglglessink->egl_context->position_array[8 + 1].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 2].x = -1;
-    eglglessink->egl_context->position_array[8 + 2].y = 1;
-    eglglessink->egl_context->position_array[8 + 2].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 3].x = x1;
-    eglglessink->egl_context->position_array[8 + 3].y = y2;
-    eglglessink->egl_context->position_array[8 + 3].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 0].x = 1;
-    eglglessink->egl_context->position_array[12 + 0].y = y1;
-    eglglessink->egl_context->position_array[12 + 0].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 1].x = 1;
-    eglglessink->egl_context->position_array[12 + 1].y = -1;
-    eglglessink->egl_context->position_array[12 + 1].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 2].x = x1;
-    eglglessink->egl_context->position_array[12 + 2].y = y1;
-    eglglessink->egl_context->position_array[12 + 2].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 3].x = -1;
-    eglglessink->egl_context->position_array[12 + 3].y = -1;
-    eglglessink->egl_context->position_array[12 + 3].z = 0;
-  } else {
-    /* Borders left/right */
-
-    eglglessink->egl_context->position_array[8 + 0].x = x1;
-    eglglessink->egl_context->position_array[8 + 0].y = 1;
-    eglglessink->egl_context->position_array[8 + 0].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 1].x = x1;
-    eglglessink->egl_context->position_array[8 + 1].y = -1;
-    eglglessink->egl_context->position_array[8 + 1].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 2].x = -1;
-    eglglessink->egl_context->position_array[8 + 2].y = 1;
-    eglglessink->egl_context->position_array[8 + 2].z = 0;
-
-    eglglessink->egl_context->position_array[8 + 3].x = -1;
-    eglglessink->egl_context->position_array[8 + 3].y = -1;
-    eglglessink->egl_context->position_array[8 + 3].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 0].x = 1;
-    eglglessink->egl_context->position_array[12 + 0].y = 1;
-    eglglessink->egl_context->position_array[12 + 0].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 1].x = 1;
-    eglglessink->egl_context->position_array[12 + 1].y = -1;
-    eglglessink->egl_context->position_array[12 + 1].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 2].x = x2;
-    eglglessink->egl_context->position_array[12 + 2].y = y2;
-    eglglessink->egl_context->position_array[12 + 2].z = 0;
-
-    eglglessink->egl_context->position_array[12 + 3].x = x2;
-    eglglessink->egl_context->position_array[12 + 3].y = -1;
-    eglglessink->egl_context->position_array[12 + 3].z = 0;
-  }
-
-  eglglessink->egl_context->index_array[0] = 0;
-  eglglessink->egl_context->index_array[1] = 1;
-  eglglessink->egl_context->index_array[2] = 2;
-  eglglessink->egl_context->index_array[3] = 3;
-
-  glGenBuffers (1, &eglglessink->egl_context->position_buffer);
-  glGenBuffers (1, &eglglessink->egl_context->index_buffer);
-  if (got_gl_error ("glGenBuffers"))
-    goto HANDLE_ERROR_LOCKED;
-
-  glBindBuffer (GL_ARRAY_BUFFER, eglglessink->egl_context->position_buffer);
-  if (got_gl_error ("glBindBuffer position_buffer"))
-    goto HANDLE_ERROR_LOCKED;
-
-  glBufferData (GL_ARRAY_BUFFER,
-      sizeof (eglglessink->egl_context->position_array),
-      eglglessink->egl_context->position_array, GL_STATIC_DRAW);
-  if (got_gl_error ("glBufferData position_buffer"))
-    goto HANDLE_ERROR_LOCKED;
-
-  glBindBuffer (GL_ELEMENT_ARRAY_BUFFER,
-      eglglessink->egl_context->index_buffer);
-  if (got_gl_error ("glBindBuffer index_buffer"))
-    goto HANDLE_ERROR_LOCKED;
-
-  glBufferData (GL_ELEMENT_ARRAY_BUFFER,
-      sizeof (eglglessink->egl_context->index_array),
-      eglglessink->egl_context->index_array, GL_STATIC_DRAW);
-  if (got_gl_error ("glBufferData index_buffer"))
-    goto HANDLE_ERROR_LOCKED;
-
-  eglglessink->egl_context->have_vbo = TRUE;
-
-  GST_DEBUG_OBJECT (eglglessink, "VBO setup done");
-
-  return TRUE;
-
-HANDLE_ERROR_LOCKED:
-  GST_ERROR_OBJECT (eglglessink, "Unable to perform VBO setup");
-  return FALSE;
 }
 
 
@@ -1527,8 +1321,8 @@ HANDLE_ERROR:
 }
 
 static gboolean
-gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf)
-{
+gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf) {
+
   CUarray dpArray;
   CUresult result;
   guint width, height;
@@ -1770,6 +1564,7 @@ HANDLE_ERROR:
     return FALSE;
 }
 
+
 /* 更新纹理*/
 static GstFlowReturn
 gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
@@ -1780,9 +1575,7 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
     GST_DEBUG_OBJECT (eglglessink, "Rendering previous buffer again");
   } else if (buf) {
 
-    #ifndef HAVE_IOS
     GstMemory *mem;
-    #endif
 
     GstVideoGLTextureUploadMeta *upload_meta;
 
@@ -1834,7 +1627,6 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       eglglessink->stride[0] = 1;
       eglglessink->stride[1] = 1;
       eglglessink->stride[2] = 1;
-      #ifndef HAVE_IOS
     } else if (eglglessink->using_nvbufsurf) { /* 如果是Jetson设备会执行 */
       GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
       EGLImageKHR image = EGL_NO_IMAGE_KHR;
@@ -1954,7 +1746,6 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       eglglessink->stride[0] = 1;
       eglglessink->stride[1] = 1;
       eglglessink->stride[2] = 1;
-      #endif
     } else if (eglglessink->using_cuda) {
       //Handle Cuda Buffers
       if (!gst_eglglessink_cuda_buffer_copy(eglglessink, buf)) {
@@ -2174,11 +1965,11 @@ gst_eglglessink_render (GstEglGlesSink * eglglessink)
 //   glDisableVertexAttribArray (eglglessink->egl_context->position_loc[0]);
 //   glDisableVertexAttribArray (eglglessink->egl_context->texpos_loc[0]);
 
-//   // if (!gst_egl_adaptation_context_swap_buffers (eglglessink->egl_context, eglglessink->winsys,
-//   //             &eglglessink->own_window_data, eglglessink->last_uploaded_buffer,
-//   //             eglglessink->show_latency)) {
-//   //   goto HANDLE_ERROR;
-//   // }
+//   if (!gst_egl_adaptation_context_swap_buffers (eglglessink->egl_context, eglglessink->winsys,
+//               &eglglessink->own_window_data, eglglessink->last_uploaded_buffer,
+//               eglglessink->show_latency)) {
+//     goto HANDLE_ERROR;
+//   }
 
 //   if (eglglessink->profile)
 //     GstEglJitterToolAddPoint(eglglessink->pDeliveryJitter);
@@ -2214,6 +2005,7 @@ gst_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf)
 
   return gst_eglglessink_queue_object (eglglessink, GST_MINI_OBJECT_CAST (buf));
 }
+
 
 /**
  * @brief: 显示帧图像（但是这里并不是用这个函数去实现的）
@@ -2607,8 +2399,7 @@ gst_eglglessink_cuda_cleanup (GstEglGlesSink * eglglessink)
 }
 
 /**
- * @brief: 1. gl 编译着色器程序、纹理id生成
- *         2. gl纹理创建CUDA访问句柄
+ * @brief: 设定当前线程egl上下文
  * 
 */
 static gboolean
@@ -2748,7 +2539,6 @@ gst_eglglessink_open (GstEglGlesSink * eglglessink) {
     return FALSE;
   }
 
-  /* 具体还没查看 */
   if (eglglessink->profile) {
     eglglessink->pDeliveryJitter = GstEglAllocJitterTool("frame delivery", 100);
     GstEglJitterToolSetShow(eglglessink->pDeliveryJitter, 0 /*eglglessink->profile*/);
@@ -2763,10 +2553,7 @@ gst_eglglessink_open (GstEglGlesSink * eglglessink) {
 static gboolean
 gst_eglglessink_close (GstEglGlesSink * eglglessink)
 {
-  g_print ("gst_eglglessink_close (GstEglGlesSink * eglglessink)\n");
   double fJitterAvg = 0, fJitterStd = 0, fJitterHighest = 0;
-
-#ifndef HAVE_IOS
 
   g_mutex_lock (&eglglessink->render_lock);
   eglglessink->is_closing = TRUE;
@@ -2782,12 +2569,12 @@ gst_eglglessink_close (GstEglGlesSink * eglglessink)
     gst_egl_display_unref (eglglessink->egl_context->display);
     eglglessink->egl_context->display = NULL;
   }
+
   GST_OBJECT_LOCK (eglglessink);
   if (eglglessink->pool)
     gst_object_unref (eglglessink->pool);
   eglglessink->pool = NULL;
   GST_OBJECT_UNLOCK (eglglessink);
-#endif
 
   if (eglglessink->profile) {
     GstEglJitterToolGetAvgs(eglglessink->pDeliveryJitter, &fJitterStd, &fJitterAvg, &fJitterHighest);
@@ -2806,13 +2593,6 @@ gst_eglglessink_close (GstEglGlesSink * eglglessink)
   eglglessink->sinkcaps = NULL;
   eglglessink->egl_started = FALSE;
 
-#ifdef USE_EGL_X11
-  if (g_strcmp0(eglglessink->winsys, "x11") == 0) {
-    if (eglglessink->event_thread) {
-      g_thread_join (eglglessink->event_thread);
-    }
-  }
-#endif
   if (GST_OBJECT_REFCOUNT(eglglessink))
     gst_object_unref (eglglessink);
   return TRUE;
@@ -2886,7 +2666,7 @@ gst_eglglessink_finalize (GObject * object)
   g_cond_clear (&eglglessink->render_exit_cond);
   g_mutex_clear (&eglglessink->render_lock);
 
-  // gst_egl_adaptation_context_free (eglglessink->egl_context);
+  gst_egl_adaptation_context_free (eglglessink->egl_context);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }

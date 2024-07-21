@@ -7,8 +7,9 @@
 
 #include "gstegljitter.h"
 
-GstEglJitterTool *GstEglAllocJitterTool(const char *pName, guint nTicks)
-{
+GstEglJitterTool *
+GstEglAllocJitterTool(const char *pName, guint nTicks) {
+
   GstEglJitterTool *pTool;
 
   assert(pName);
@@ -52,13 +53,14 @@ void GstEglFreeJitterTool(GstEglJitterTool *pTool)
   free(pTool);
 }
 
-void GstEglJitterToolAddPoint(GstEglJitterTool *pTool)
-{
-  guint64 now;
-  assert(pTool);
+void 
+GstEglJitterToolAddPoint(GstEglJitterTool *pTool) {
 
-  static guint64 s_oldtime = 0;
-  static guint64 s_timedelta = 0;
+  guint64 now;
+  assert(pTool); /* 确保 pTool 非空 */
+
+  static guint64 s_oldtime = 0; /* 用于存储上一个时间点 */
+  static guint64 s_timedelta = 0; /* 用于累积时间差 */
   struct timeval tv;
   guint64 time;
 
@@ -77,10 +79,12 @@ void GstEglJitterToolAddPoint(GstEglJitterTool *pTool)
       return;
   }
 
+  /* 计算当前时间与上次时间的差值，并存储到 pTicks 数组 */
   pTool->pTicks[pTool->nTickCount] = now - pTool->nLastTime;
   pTool->nLastTime = now;
   pTool->nTickCount++;
 
+  /* 如果未达到 nTicksMax，则返回 */
   if (pTool->nTickCount < pTool->nTicksMax)
       return;
 
@@ -101,6 +105,7 @@ void GstEglJitterToolAddPoint(GstEglJitterTool *pTool)
           printf("%s: mean: %.2f  std. dev: %.2f\n", pTool->pName,
                           fAvg, fStdDev);
 
+      /* 存储计算出的平均值和标准差到历史数组 */
       if (pTool->nPos < MAX_JITTER_HISTORY)
       {
           pTool->fAvg[pTool->nPos] = fAvg;
@@ -112,13 +117,19 @@ void GstEglJitterToolAddPoint(GstEglJitterTool *pTool)
   pTool->nTickCount = 0;
 }
 
-void GstEglJitterToolSetShow(GstEglJitterTool *pTool, gboolean bShow)
-{
+void 
+GstEglJitterToolSetShow(GstEglJitterTool *pTool, gboolean bShow) {
   pTool->bShow = bShow;
 }
 
-void GstEglJitterToolGetAvgs(GstEglJitterTool *pTool, double *pStdDev, double *pAvg,
-                             double *pHighest) {
+/**
+ * @param  pStdDev: 标准差
+ * @param     pAvg: 平均值
+ * @param pHighest: 最大值
+ */
+void 
+GstEglJitterToolGetAvgs(GstEglJitterTool *pTool, 
+                        double *pStdDev, double *pAvg, double *pHighest) {
   guint i;
 
   assert(pTool);

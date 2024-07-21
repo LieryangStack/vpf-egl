@@ -155,6 +155,17 @@ gst_egl_adaptation_context_new (GstElement * element)
   return ctx;
 }
 
+/**
+ * @brief: 释放 GstEglAdaptationContext结构体内存
+*/
+void
+gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx)
+{
+  if (GST_OBJECT_REFCOUNT(ctx->element))
+    gst_object_unref (ctx->element);
+  g_free (ctx);
+}
+
 
 /**
  * @brief: 线程池中创建GstBuffer，最终调用的该函数进行创建GstBuffer
