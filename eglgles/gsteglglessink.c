@@ -61,7 +61,7 @@ static GstStaticPadTemplate gst_eglglessink_sink_template_factory =
 /* Filter signals and args */
 enum
 {
-  UI_RENDER,
+  PAINTABLE,
   /* FILL ME */
   LAST_SIGNAL
 };
@@ -456,14 +456,34 @@ egl_init (GstEglGlesSink * eglglessink) {
   if (!gtk_init_check())
     gtk_init ();
 
-  eglglessink->gdk_gl_context = gdk_display_create_gl_context(gdk_display_get_default(), &error);
+  GdkGLContext *context = gdk_display_create_gl_context(gdk_display_get_default(), &error);
   if (error) {
     g_message ("%s\n",error->message);
     g_clear_error (&error);
   }
 
+  /* 创建 paintable */
+  eglglessink->paintable = gtk_gst_paintable_new ();
+  gtk_gst_paintable_set_context (GTK_GST_PAINTABLE(eglglessink->paintable), context);
+  gtk_gst_paintable_set_sink (GTK_GST_PAINTABLE(eglglessink->paintable), GST_ELEMENT(eglglessink));
+
   /* 把新创建的egl_context设定为当前线程上下文 */
-  gdk_gl_context_make_current (eglglessink->gdk_gl_context);
+  gdk_gl_context_make_current (context);
+
+  /* 创建纹理 */
+  eglglessink->egl_context->n_textures = 1;
+  glGenTextures(1, eglglessink->egl_context->texture);
+  glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_2D, 0); 
+
+
+  g_signal_emit (eglglessink, signals[PAINTABLE], 0, eglglessink->paintable);
+
+
 
   /* EGLDisplay 包装了一下， ctx->display = display; */
   eglglessink->egl_context->display = gst_egl_display_new (eglGetCurrentDisplay (), NULL);
@@ -496,6 +516,17 @@ egl_init (GstEglGlesSink * eglglessink) {
 HANDLE_ERROR:
   GST_ERROR_OBJECT (eglglessink, "Failed to perform EGL init");
   return FALSE;
+}
+
+
+static gboolean
+gtk_gst_paintable_set_texture_invoke (gpointer data)
+{
+  GstEglGlesSink * eglglessink = GST_EGLGLESSINK(data);
+
+  gdk_paintable_invalidate_contents (eglglessink->paintable);
+
+  return G_SOURCE_REMOVE;
 }
 
 
@@ -583,7 +614,12 @@ render_thread_func (GstEglGlesSink * eglglessink) {
       if (eglglessink->configured_caps) {
         last_flow = gst_eglglessink_upload (eglglessink, buf); /* 将GPU内部的纹理更新到我们创建的纹理 eglglessink->egl_context->texture[0] */
         if (last_flow == GST_FLOW_OK)
-          g_signal_emit (eglglessink, signals[UI_RENDER], 0);
+            // gdk_paintable_invalidate_contents (eglglessink->paintable);
+              g_main_context_invoke_full (NULL,
+                              G_PRIORITY_DEFAULT,
+                              gtk_gst_paintable_set_texture_invoke,
+                              eglglessink, NULL);
+          // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
       } else {
         last_flow = GST_FLOW_OK;
         GST_DEBUG_OBJECT (eglglessink,
@@ -1423,7 +1459,6 @@ gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf)
       glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
       glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
           GL_UNSIGNED_BYTE, (void *)eglglessink->swData);
-
       eglglessink->stride[0] = 1;
       eglglessink->stride[1] = 1;
       eglglessink->stride[2] = 1;
@@ -2200,6 +2235,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
 {
   gboolean ret = TRUE;
   GstVideoInfo info;
+  GdkGLContext *context = gtk_gst_paintable_get_context (GTK_GST_PAINTABLE(eglglessink->paintable));
 
   gst_video_info_init (&info);
   if (!(ret = gst_video_info_from_caps (&info, caps))) {
@@ -2231,7 +2267,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
   }
 
   /* 把GdkGLContext中EGLContext设置为当前线程的egl上下文 */
-  gdk_gl_context_make_current (eglglessink->gdk_gl_context);
+  gdk_gl_context_make_current (context);
 
   eglglessink->egl_context->egl_context = eglGetCurrentContext ();
 
@@ -2699,31 +2735,6 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
 
   // export GST_PLUGIN_PATH=/home/lieryang/Desktop/gstegl_src/gst-egl
 
-  g_object_class_install_property (gobject_class, PROP_EGL_DISPLAY,
-      g_param_spec_pointer ("egl-display",
-          "UI Thread EGL Dispaly",
-          "UI Thread EGL Dispaly",
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-    
-  g_object_class_install_property (gobject_class, PROP_EGL_CONFIG,
-      g_param_spec_pointer ("egl-config",
-          "UI Thread EGL Config",
-          "UI Thread EGL Config",
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (gobject_class, PROP_EGL_SHARE_CONTEXT,
-      g_param_spec_pointer ("egl-share-context",
-          "UI Thread EGL Share Context",
-          "UI Thread EGL Share Context",
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (gobject_class, PROP_EGL_SHARE_TEXTURE,
-      g_param_spec_uint ("egl-share-texture", "UI Thread share texture ID",
-          "UI Thread share texture ID",
-          0, G_MAXUINT, 0,
-          (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY)));
-
   g_object_class_install_property (gobject_class, PROP_IVI_SURF_ID,
       g_param_spec_uint ("ivisurf-id", "Wayland IVI surface ID",
           "Set Wayland IVI surface ID, only available for Wayland IVI shell",
@@ -2731,13 +2742,13 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
           (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
-  signals[UI_RENDER] =
-    g_signal_new ("ui-render",
+  signals[PAINTABLE] =
+    g_signal_new ("paintable",
                   G_TYPE_FROM_CLASS (klass),
                   G_SIGNAL_RUN_LAST,
                   0,
                   NULL, NULL, NULL,
-                  G_TYPE_NONE, 0);
+                  G_TYPE_NONE, 1, GDK_TYPE_PAINTABLE);
   
   gst_element_class_set_static_metadata (gstelement_class,
       "EGL/GLES vout Sink",
@@ -2850,12 +2861,7 @@ eglglessink_plugin_init (GstPlugin * plugin)
 
   gst_egl_adaption_init ();
 
-#ifdef USE_EGL_RPI
-  GST_DEBUG ("Initialize BCM host");
-  bcm_host_init ();
-#endif
-
-  return gst_element_register (plugin, "nveglglessink", GST_RANK_SECONDARY,
+  return gst_element_register (plugin, "vpfeglglessink", GST_RANK_SECONDARY,
       GST_TYPE_EGLGLESSINK);
 }
 
@@ -2865,7 +2871,7 @@ eglglessink_plugin_init (GstPlugin * plugin)
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
 #ifdef IS_DESKTOP
-    nvdsgst_eglglessink,
+    vpfeglglessink,
 #else
     nveglglessink,
 #endif

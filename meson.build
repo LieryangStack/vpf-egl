@@ -1,7 +1,7 @@
 project('vpf_egl_gles_sink', 'c',
         version: '1.0',
         default_options:[
-          'buildtype=debugoptimized',
+          'buildtype=debug',
           'warning_level=1',
           'c_std=gnu99'],
         meson_version: '>= 0.60.0')
@@ -47,7 +47,8 @@ c_sources = files (
   'eglgles/gstegladaptation.c',
 	'eglgles/gsteglglessink.c',
 	'eglgles/gstegljitter.c',
-	'eglgles/gsteglimageallocator.c')
+	'eglgles/gsteglimageallocator.c',
+        'eglgles/gtkgstpaintable.c')
 
 ds_library_path = '/opt/nvidia/deepstream/deepstream/lib'
 
@@ -75,4 +76,6 @@ shared_library ('vpfeglglessink',
   sources: c_sources,
   include_directories: incs,
   dependencies: deps,
+  install: true,
+  install_dir: '/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0',
   c_args: ['-Wl,--no-undefined'])

@@ -7,6 +7,7 @@
     "config.h": "c",
     "videooverlay.h": "c",
     "eglext.h": "c",
-    "gsteglimageallocator.h": "c"
+    "gsteglimageallocator.h": "c",
+    "gtkgstpaintable.h": "c"
   }
 }

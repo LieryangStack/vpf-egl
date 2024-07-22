@@ -10,8 +10,7 @@
 #include <cudaGL.h>
 #include <cuda_runtime.h>
 
-#include <gtk/gtk.h>
-
+#include "gtkgstpaintable.h"
 #include "gstegladaptation.h"
 #include "gstegljitter.h"
 
@@ -128,7 +127,7 @@ struct _GstEglGlesSink
     texture from the SW buffer.
   */
   uint8_t *swData;
-  GdkGLContext *gdk_gl_context;
+  GdkPaintable *paintable;
 };
 
 struct _GstEglGlesSinkClass
