@@ -20,8 +20,6 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gtk_snapshot_save (snapshot);
   gtk_snapshot_scale (snapshot, width, height);
 
-  static gboolean flag = FALSE;
-
   GdkGLTextureBuilder *builder = gdk_gl_texture_builder_new ();
   gdk_gl_texture_builder_set_context (builder, GTK_GST_PAINTABLE(paintable)->context);
   gdk_gl_texture_builder_set_id (builder, GTK_GST_PAINTABLE(paintable)->sink->egl_context->texture[0]);
@@ -38,6 +36,8 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
 
   /* 用于将之前保存的状态从堆栈中恢复 */
   gtk_snapshot_restore (snapshot);
+  static gint i = 1;
+  g_print ("render %d\n", i++);
 }
 
 static void

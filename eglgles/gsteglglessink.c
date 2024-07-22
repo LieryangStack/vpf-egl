@@ -627,50 +627,28 @@ render_thread_func (GstEglGlesSink * eglglessink) {
       }
     } else if (!object) {  /* 如果是 object == NULL */
       if (eglglessink->configured_caps) {
+        
         last_flow = gst_eglglessink_render (eglglessink);  /* 绘制OpenGL ES顶点 */
 
-      if (eglglessink->last_uploaded_buffer && eglglessink->pool) {
-        gst_egl_image_buffer_pool_replace_last_buffer (GST_EGL_IMAGE_BUFFER_POOL
-            (eglglessink->pool), eglglessink->last_uploaded_buffer);
-        eglglessink->last_uploaded_buffer = NULL;
-      }
+        if (eglglessink->last_uploaded_buffer && eglglessink->pool) {
+          gst_egl_image_buffer_pool_replace_last_buffer (GST_EGL_IMAGE_BUFFER_POOL
+              (eglglessink->pool), eglglessink->last_uploaded_buffer);
+          eglglessink->last_uploaded_buffer = NULL;
+        }
 
-      if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
-          GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
-          GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
-          gst_memory_map (mem, &map, GST_MAP_READ);
+        if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
+            GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
+            GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
+            gst_memory_map (mem, &map, GST_MAP_READ);
 
-          NvBufSurface *in_surface = (NvBufSurface*) map.data;
+            NvBufSurface *in_surface = (NvBufSurface*) map.data;
 
-          if (NvBufSurfaceUnMapEglImage (in_surface, 0) !=0) {
-              GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceUnMapEglImage\n");
-          }
+            if (NvBufSurfaceUnMapEglImage (in_surface, 0) !=0) {
+                GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceUnMapEglImage\n");
+            }
 
-          gst_memory_unmap (mem, &map);
-      }
-
-
-        /*
-        * gst_eglglessink_render returns error if window has been changed.
-        * So wait for 1 second to check if window is changing.
-        */
-        // if (last_flow != GST_FLOW_OK) {
-        //   if (eglglessink->egl_context->used_window ==
-        //       eglglessink->egl_context->window) {
-        //     g_mutex_lock (&eglglessink->render_lock);
-        //     g_cond_wait_until (&eglglessink->render_cond,
-        //         &eglglessink->render_lock,
-        //         g_get_monotonic_time () + G_TIME_SPAN_SECOND);
-        //     g_mutex_unlock (&eglglessink->render_lock);
-        //   }
-
-        //   if (eglglessink->egl_context->used_window !=
-        //       eglglessink->egl_context->window) {
-        //     if (gst_egl_adaptation_reset_window (eglglessink->egl_context,
-        //             eglglessink->configured_info.finfo->format, eglglessink->using_nvbufsurf))
-        //       last_flow = GST_FLOW_OK;
-        //   }
-        // }
+            gst_memory_unmap (mem, &map);
+        }
 
       } else {
         last_flow = GST_FLOW_OK;
