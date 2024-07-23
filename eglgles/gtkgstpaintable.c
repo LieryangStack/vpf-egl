@@ -36,8 +36,8 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
 
   /* 用于将之前保存的状态从堆栈中恢复 */
   gtk_snapshot_restore (snapshot);
-  static gint i = 1;
-  g_print ("render %d\n", i++);
+  // static gint i = 1;
+  // g_print ("render %d\n", i++);
 }
 
 static void
