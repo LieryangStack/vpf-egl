@@ -15,7 +15,9 @@
 #include <gtk/gtk.h>
 
 #include "nvbufsurface.h"
+#include <libdrm/drm_fourcc.h>
 
+GdkTexture *dma_buf_texture = NULL;
 
 #ifdef IS_DESKTOP
 #define DEFAULT_NVBUF_API_VERSION_NEW   TRUE
@@ -1654,6 +1656,22 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       in_surface = (NvBufSurface*) map.data;
       NvBufSurfaceMapParams params;
       NvBufSurfaceGetMapParams (in_surface, 0, &params);
+
+      GdkDmabufTextureBuilder *builder = gdk_dmabuf_texture_builder_new ();
+      gdk_dmabuf_texture_builder_set_display (builder, gdk_display_get_default());
+      gdk_dmabuf_texture_builder_set_fourcc (builder, DRM_FORMAT_RGBA8888);
+      // gdk_dmabuf_texture_builder_set_modifier (builder, self->drm_info.drm_modifier);
+      gdk_dmabuf_texture_builder_set_width (builder, params.planes[0].width);
+      gdk_dmabuf_texture_builder_set_height (builder, params.planes[0].height);
+      gdk_dmabuf_texture_builder_set_n_planes (builder, params.num_planes);
+      
+      gdk_dmabuf_texture_builder_set_fd (builder, 0, params.fd);
+      gdk_dmabuf_texture_builder_set_offset (builder, 0, params.planes[0].offset);
+      gdk_dmabuf_texture_builder_set_stride (builder, 0, params.planes[0].pitch);
+
+      dma_buf_texture = gdk_dmabuf_texture_builder_build (builder, NULL, NULL, NULL);
+
+      g_object_unref (builder);
 
       // GST_DEBUG_OBJECT (eglglessink, "exporting EGLImage from nvbufsurf");
       // /* NvBufSurface - NVMM buffer type are handled here */

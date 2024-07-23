@@ -8,6 +8,8 @@
     "videooverlay.h": "c",
     "eglext.h": "c",
     "gsteglimageallocator.h": "c",
-    "gtkgstpaintable.h": "c"
+    "gtkgstpaintable.h": "c",
+    "gstegljitter.h": "c",
+    "gstvideosink.h": "c"
   }
 }

@@ -135,6 +135,8 @@ struct _GstEglGlesSinkClass
   GstVideoSinkClass parent_class;
 };
 
+extern GdkTexture *dma_buf_texture;
+
 GType gst_eglglessink_get_type (void);
 
 G_END_DECLS

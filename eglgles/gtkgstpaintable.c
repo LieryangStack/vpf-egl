@@ -26,12 +26,12 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gdk_gl_texture_builder_set_width (builder, 1);
   gdk_gl_texture_builder_set_height (builder, 1);
 
-  
-
-
   GdkTexture *texture = gdk_gl_texture_builder_build (builder,NULL, NULL);
 
-  gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
+  if (dma_buf_texture)
+    gtk_snapshot_append_texture (snapshot, dma_buf_texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
+  else
+    gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
 
   g_object_unref (texture);
   g_object_unref (builder);
