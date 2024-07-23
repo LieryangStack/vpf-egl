@@ -26,13 +26,10 @@ host = host_machine.cpu_family()
 
 if host == 'x86_64'
   conf_data.set('IS_DESKTOP', 1, description: '如果是PC端运行，该值就会被定义，该值跟使用GPU CUDA有关')
+else
+  conf_data.set('NVOS_IS_L4T', 1, description: '如果是PC端运行，该值就会被定义，该值跟使用GPU CUDA有关')
 endif
 
-
-# 如果是 IOS 系统，就需要定义 HAVE_IOS
-# 如果是 树莓派 RPI, 定义 USE_EGL_RPI
-# 如果是 使用Wayland视窗系统， 定义 USE_EGL_WAYLAND
-conf_data.set('USE_EGL_X11', 1, description: '是否使用的是egl x11窗口')
 
 configure_file(output: 'config.h',
                configuration: conf_data)

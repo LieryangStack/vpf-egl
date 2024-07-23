@@ -2851,7 +2851,7 @@ GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
 #ifdef IS_DESKTOP
     vpfeglglessink,
 #else
-    nveglglessink,
+    vpfeglglessink,
 #endif
     "EGL/GLES sink",
 #ifdef IS_DESKTOP
