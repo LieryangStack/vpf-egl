@@ -1652,61 +1652,63 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
        */
       /* NvBufSurface type are handled here */
       in_surface = (NvBufSurface*) map.data;
+      NvBufSurfaceMapParams params;
+      NvBufSurfaceGetMapParams (in_surface, 0, &params);
 
-      GST_DEBUG_OBJECT (eglglessink, "exporting EGLImage from nvbufsurf");
-      /* NvBufSurface - NVMM buffer type are handled here */
-      if (in_surface->batchSize != 1) {
-        GST_ERROR_OBJECT (eglglessink, "ERROR: Batch size not 1\n");
-        return FALSE;
-      }
+      // GST_DEBUG_OBJECT (eglglessink, "exporting EGLImage from nvbufsurf");
+      // /* NvBufSurface - NVMM buffer type are handled here */
+      // if (in_surface->batchSize != 1) {
+      //   GST_ERROR_OBJECT (eglglessink, "ERROR: Batch size not 1\n");
+      //   return FALSE;
+      // }
 
-      /**
-       * @brief: 从一个或多个NvBufSurface缓冲区的内存中创建一个EGLImage
-       *         仅支持内存类型NVBUF_MEM_SURFACE_ARRAY (只能Jetson使用)
-       *         创建的EGLImage存储在 in_surface->surfaceList->mappedAddr->eglImage
-       * @param surf: surf 指向NvBufSurface结构的指针，函数将所创建的EGLImage的指针存储在此结构成员中
-       * @param index: 批处理中缓冲区的索引。-1指定批处理中的所有缓冲区。（上面已经判断缓冲区中只有一个）
-       * @return: 成功返回0，否则返回-1。
-      */
-      if (NvBufSurfaceMapEglImage (in_surface, 0) !=0) {
-        GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceMapEglImage\n");
-        return FALSE;
-      }
+      // /**
+      //  * @brief: 从一个或多个NvBufSurface缓冲区的内存中创建一个EGLImage
+      //  *         仅支持内存类型NVBUF_MEM_SURFACE_ARRAY (只能Jetson使用)
+      //  *         创建的EGLImage存储在 in_surface->surfaceList->mappedAddr->eglImage
+      //  * @param surf: surf 指向NvBufSurface结构的指针，函数将所创建的EGLImage的指针存储在此结构成员中
+      //  * @param index: 批处理中缓冲区的索引。-1指定批处理中的所有缓冲区。（上面已经判断缓冲区中只有一个）
+      //  * @return: 成功返回0，否则返回-1。
+      // */
+      // if (NvBufSurfaceMapEglImage (in_surface, 0) !=0) {
+      //   GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceMapEglImage\n");
+      //   return FALSE;
+      // }
 
-      /* EGLImageKHR类型 */
-      image = in_surface->surfaceList[0].mappedAddr.eglImage;
+      // /* EGLImageKHR类型 */
+      // image = in_surface->surfaceList[0].mappedAddr.eglImage;
 
-      glActiveTexture (GL_TEXTURE0);
-      if (got_gl_error ("glActiveTexture")) {
-        goto HANDLE_ERROR;
-      }
-      glBindTexture (GL_TEXTURE_EXTERNAL_OES, eglglessink->egl_context->texture[0]);
-      if (got_gl_error ("glBindTexture")) {
-        goto HANDLE_ERROR;
-      }
+      // glActiveTexture (GL_TEXTURE0);
+      // if (got_gl_error ("glActiveTexture")) {
+      //   goto HANDLE_ERROR;
+      // }
+      // glBindTexture (GL_TEXTURE_EXTERNAL_OES, eglglessink->egl_context->texture[0]);
+      // if (got_gl_error ("glBindTexture")) {
+      //   goto HANDLE_ERROR;
+      // }
 
-      GST_DEBUG_OBJECT (eglglessink, "calling glEGLImageTargetTexture2DOES");
-      if (eglglessink->glEGLImageTargetTexture2DOES) {
-        GST_DEBUG_OBJECT (eglglessink, "caught error in glEGLImageTargetTexture2DOES : eglImage: %p", image);
-        /*  EGLImage 绑定到当前的 OpenGL ES 纹理目标上 */
-        eglglessink->glEGLImageTargetTexture2DOES (GL_TEXTURE_EXTERNAL_OES, image); 
-        if (got_gl_error ("glEGLImageTargetTexture2DOES")) {
-          goto HANDLE_ERROR;
-        }
-      } else {
-        GST_ERROR_OBJECT (eglglessink,
-            "glEGLImageTargetTexture2DOES not supported");
-        return GST_FLOW_ERROR;
-      }
+      // GST_DEBUG_OBJECT (eglglessink, "calling glEGLImageTargetTexture2DOES");
+      // if (eglglessink->glEGLImageTargetTexture2DOES) {
+      //   GST_DEBUG_OBJECT (eglglessink, "caught error in glEGLImageTargetTexture2DOES : eglImage: %p", image);
+      //   /*  EGLImage 绑定到当前的 OpenGL ES 纹理目标上 */
+      //   eglglessink->glEGLImageTargetTexture2DOES (GL_TEXTURE_EXTERNAL_OES, image); 
+      //   if (got_gl_error ("glEGLImageTargetTexture2DOES")) {
+      //     goto HANDLE_ERROR;
+      //   }
+      // } else {
+      //   GST_ERROR_OBJECT (eglglessink,
+      //       "glEGLImageTargetTexture2DOES not supported");
+      //   return GST_FLOW_ERROR;
+      // }
 
-      eglglessink->orientation = GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL;
+      // eglglessink->orientation = GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL;
 
-      eglglessink->last_uploaded_buffer = buf;
+      // eglglessink->last_uploaded_buffer = buf;
 
-      eglglessink->stride[0] = 1;
-      eglglessink->stride[1] = 1;
-      eglglessink->stride[2] = 1;
-      GST_DEBUG_OBJECT (eglglessink, "done uploading");
+      // eglglessink->stride[0] = 1;
+      // eglglessink->stride[1] = 1;
+      // eglglessink->stride[2] = 1;
+      // GST_DEBUG_OBJECT (eglglessink, "done uploading");
 
       gst_memory_unmap (mem, &map);
     } else if ( gst_buffer_n_memory (buf) >= 1 && \
