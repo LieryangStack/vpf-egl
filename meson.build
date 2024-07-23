@@ -11,8 +11,6 @@ conf_data = configuration_data()
 
 #define  ""
 
-#define  ""
-
 # set_quoted 会把字符串两边加双引号，value只能是字符串类型
 conf_data.set_quoted('GST_LICENSE', 'LGPL')
 conf_data.set_quoted('PACKAGE', 'gst-template-plugin')
@@ -51,11 +49,9 @@ ds_library_path = '/opt/nvidia/deepstream/deepstream/lib'
 
 # modules: ['cudart', 'cuda'] 就是 libcudart.so libcuda.so
 cuda_dep = dependency('cuda', modules: ['cudart', 'cuda'], required: true)
-glib_dep = dependency('glib-2.0', required: true)
 gstreamer_dep = dependency('gstreamer-1.0', required: true)
 gstreamer_base_dep = dependency('gstreamer-base-1.0', required: true)
 gstreamer_video_dep = dependency('gstreamer-video-1.0', required: true)
-x11_dep = dependency('x11', required: true)
 gtk4_dep = dependency('gtk4', required: true)
 
 
@@ -66,7 +62,7 @@ gles_dep = cc.find_library ('GLESv2')
 libm_dep = cc.find_library('m') # 数学库
 nvbufsurface_dep = cc.find_library('nvbufsurface', dirs: ds_library_path)
 
-deps = [cuda_dep, glib_dep, gstreamer_dep, gstreamer_base_dep, gstreamer_video_dep, x11_dep, gtk4_dep,
+deps = [cuda_dep, gstreamer_dep, gstreamer_base_dep, gstreamer_video_dep, gtk4_dep,
         egl_dep, gles_dep, libm_dep, nvbufsurface_dep]
 
 shared_library ('vpfeglglessink',

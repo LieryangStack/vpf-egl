@@ -480,10 +480,7 @@ egl_init (GstEglGlesSink * eglglessink) {
   glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glBindTexture(GL_TEXTURE_2D, 0); 
 
-
   g_signal_emit (eglglessink, signals[PAINTABLE], 0, eglglessink->paintable);
-
-
 
   /* EGLDisplay 包装了一下， ctx->display = display; */
   eglglessink->egl_context->display = gst_egl_display_new (eglGetCurrentDisplay (), NULL);
