@@ -26,6 +26,8 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gdk_gl_texture_builder_set_width (builder, 1);
   gdk_gl_texture_builder_set_height (builder, 1);
 
+  
+
 
   GdkTexture *texture = gdk_gl_texture_builder_build (builder,NULL, NULL);
 
