@@ -42,7 +42,6 @@ c_sources = files (
   'eglgles/gstegladaptation.c',
 	'eglgles/gsteglglessink.c',
 	'eglgles/gstegljitter.c',
-	'eglgles/gsteglimageallocator.c',
         'eglgles/gtkgstpaintable.c')
 
 ds_library_path = '/opt/nvidia/deepstream/deepstream/lib'

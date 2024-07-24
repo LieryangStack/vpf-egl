@@ -30,8 +30,6 @@
 #include <EGL/eglext.h>
 #endif
 
-#include "gsteglimageallocator.h"
-
 #if defined (USE_EGL_RPI) && defined(__GNUC__)
 #pragma GCC reset_options
 #pragma GCC diagnostic pop
@@ -85,13 +83,6 @@ typedef struct
 struct _GstEglAdaptationContext
 {
   GstElement *element;
-
-#ifdef HAVE_IOS
-  GstEaglContext *eaglctx;
-  void * window, *used_window;
-#else
-  GstEGLDisplay *display, *set_display; /* egl显示display、创建EGLImageKHR相关函数指针 */
-#endif
   
   GLuint fragshader[2]; /* fragshader[0]表示正常片段着色程序ID， fragshader[1]表示不能保留前一帧buffer相关的片段着色程序ID（一般不会被复制） */
   GLuint vertshader[2]; /* vertshader[0]表示正常顶点着色程序ID， vertshader[1]表示不能保留前一帧buffer相关的顶点着色程序ID（一般不会被复制） */
@@ -138,16 +129,6 @@ GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationCont
 
 gboolean got_gl_error (const char *wtf);
 gboolean got_egl_error (const char *wtf);
-
-/* TODO: The goal is to move this function to gstegl lib (or
- * splitted between gstegl lib and gstgl lib) in order to be used in
- * webkitVideoSink
- * So it has to be independent of GstEglAdaptationContext */
-GstBuffer *
-gst_egl_image_allocator_alloc_eglimage (GstAllocator * allocator,
-    GstEGLDisplay * display, EGLContext eglcontext, GstVideoFormat format,
-    gint width, gint height);
-
 
 G_END_DECLS
 
