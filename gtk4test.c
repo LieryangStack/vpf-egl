@@ -274,8 +274,8 @@ app_activate (GApplication *app, gpointer *user_data) {
   gtk_widget_set_size_request (win, 500, 400);
 
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-  GtkWidget *button = gtk_button_new_with_label ("按钮");
-  GtkWidget *label = gtk_label_new ("标签");
+  // GtkWidget *button = gtk_button_new_with_label ("按钮");
+  // GtkWidget *label = gtk_label_new ("标签");
 
   // GtkWidget *image = gtk_image_new_from_paintable (nuclear); picture可以不受长宽比拉伸
 

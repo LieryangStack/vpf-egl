@@ -19,8 +19,7 @@
 				"gstreamer-pbutils-1.0",
 				"gstreamer-gl-1.0",
 				"gtk4",
-				"gstreamer-1.0`",
-				"-lX11"
+				"gstreamer-1.0`"
 			],
 			"options": {
 				"cwd": "${fileDirname}"
