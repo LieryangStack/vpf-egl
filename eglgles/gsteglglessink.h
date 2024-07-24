@@ -29,65 +29,23 @@ G_BEGIN_DECLS
 typedef struct _GstEglGlesSink GstEglGlesSink;
 typedef struct _GstEglGlesSinkClass GstEglGlesSinkClass;
 
-/*
- * GstEglGlesSink:
- * @format: Caps' video format field
- * @display_region: Surface region to use as rendering canvas
- * @sinkcaps: Full set of suported caps
- * @current_caps: Current caps
- * @rendering_path: Rendering path (Slow/Fast)
- * @flow_lock: Simple concurrent access ward to the sink's runtime state
- * @have_window: Set if the sink has access to a window to hold it's canvas
- * @using_own_window: Set if the sink created its own window
- * @egl_started: Set if the whole EGL setup has been performed
- * @create_window: Property value holder to allow/forbid internal window creation
- * @force_rendering_slow: Property value holder to force slow rendering path
- * @force_aspect_ratio: Property value holder to consider PAR/DAR when scaling
- *
- * The #GstEglGlesSink data structure.
- */
+
 struct _GstEglGlesSink
 {
   GstVideoSink videosink;       /* Element hook */
 
-  /* Region of the surface that should be rendered */
-  GstVideoRectangle render_region;
-  gboolean render_region_changed;
-  gboolean render_region_user;
+  GstVideoInfo configured_info; /* 存储视频信息（比如格式、宽、高） */
 
-  /* Region of render_region that should be filled
-   * with the video frames */
-  GstVideoRectangle display_region;
-
-  GstVideoRectangle crop;
-  gboolean crop_changed;
   GstCaps *sinkcaps; /* 该sink支持的pad */
-  GstCaps *current_caps, *configured_caps; 
-  GstVideoInfo configured_info;
-  gfloat stride[3];
-  GstVideoGLTextureOrientation orientation;
-  GstBufferPool *pool;
+  GstCaps *current_caps, *configured_caps; /* 当前sink使用（被配置的pad） */
 
   GstEglAdaptationContext *egl_context;
-  gint window_x;
-  gint window_y;
-  gint window_width;
-  gint window_height;
-  guint profile;
-  gint rows;
-  gint columns;
-  gint change_port;
+  guint profile; /* 视频帧抖动信息（平均帧率） */
 
-  /* Runtime flags */
-  gboolean have_window; /* 是否成功创建了X11窗口 */
-  gboolean using_own_window;
   gboolean egl_started; /* egl成功在线程中初始化 */
   gboolean is_closing; /* egl是否关闭flag */
   gboolean using_cuda; /* GPU CUDA */
   gboolean using_nvbufsurf; /* Jetson */
-
-  gpointer own_window_data; /* X11窗口下的 Display */
-  GMutex window_lock;
 
   GThread *thread;
   gboolean thread_running;
@@ -97,36 +55,18 @@ struct _GstEglGlesSink
   GMutex render_lock;
   GstFlowReturn last_flow;
   GstMiniObject *dequeued_object;  /* 当前那个元素出队（从@queue），也就是该元素被处理了 */
-  GThread *event_thread; /* X11窗口事件线程 */
-
-  GstBuffer *last_buffer;
 
   EGLNativeDisplayType display; /* X11得到的那个显示， typedef Display *EGLNativeDisplayType; */
 
   GstEglJitterTool *pDeliveryJitter;
 
-  /* Properties */
-  gboolean create_window;
-  gboolean force_aspect_ratio;
-  gchar* winsys; /* 使用了那个窗口类型，比如 winsys = "x11" */
-  gboolean show_latency;
-
-  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
-
   GstBuffer *last_uploaded_buffer; /* 最近一次更新的buffer（上传纹理成功后会更新） */
   CUcontext cuContext; /* CDUA 上下文 */
   CUgraphicsResource cuResource[3]; /* CUDA资源 */
   unsigned int gpu_id;
-  gboolean nvbuf_api_version_new;
-  unsigned int ivisurf_id;
 
-  /*
-    Pointer to a SW Buffer. This is needed in case of RGB/BGR as Cuda
-    doesn't support 3-channel formats. The cuda buffer (host or device)
-    is copied using cuMemCpy2D into this sw buffer and then fill the GL
-    texture from the SW buffer.
-  */
-  uint8_t *swData;
+  gboolean nvbuf_api_version_new;
+
   GdkPaintable *paintable;
 };
 

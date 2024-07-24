@@ -57,28 +57,11 @@ static guint signals[LAST_SIGNAL] = { 0 };
 enum
 {
   PROP_0,
-  PROP_CREATE_WINDOW,
-  PROP_FORCE_ASPECT_RATIO,
-  PROP_DISPLAY,
-  PROP_WINDOW_X,
-  PROP_WINDOW_Y,
-  PROP_WINDOW_WIDTH,
-  PROP_WINDOW_HEIGHT,
+  PROP_PROFILE,
+  PROP_NVBUF_API_VERSION,
 #ifdef IS_DESKTOP
   PROP_GPU_DEVICE_ID,
 #endif
-  PROP_ROWS,
-  PROP_COLUMNS,
-  PROP_PROFILE,
-  PROP_WINSYS,
-  PROP_SHOW_LATENCY,
-  PROP_NVBUF_API_VERSION,
-  PROP_IVI_SURF_ID,
-
-  PROP_EGL_DISPLAY,
-  PROP_EGL_CONFIG,
-  PROP_EGL_SHARE_CONTEXT,
-  PROP_EGL_SHARE_TEXTURE
 };
 
 static void 
@@ -184,10 +167,6 @@ egl_init (GstEglGlesSink * eglglessink) {
 
   eglglessink->egl_started = TRUE;
 
-  eglglessink->glEGLImageTargetTexture2DOES =
-      (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
-      eglGetProcAddress ("glEGLImageTargetTexture2DOES");
-
   return TRUE;
 
 HANDLE_ERROR:
@@ -277,23 +256,6 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         
         last_flow = gst_eglglessink_render (eglglessink);  /* 绘制OpenGL ES顶点 */
 
-        /* 上一次buffer（仅仅Jetson设备）*/
-        if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
-
-            // GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
-            // GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
-
-            // gst_memory_map (mem, &map, GST_MAP_READ);
-
-            // NvBufSurface *in_surface = (NvBufSurface*) map.data;
-
-            // if (NvBufSurfaceUnMapEglImage (in_surface, 0) !=0) {
-            //     GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceUnMapEglImage\n");
-            // }
-
-            // gst_memory_unmap (mem, &map);
-        }
-
       } else {
         last_flow = GST_FLOW_OK;
         GST_DEBUG_OBJECT (eglglessink,
@@ -378,9 +340,7 @@ gst_eglglessink_start (GstEglGlesSink * eglglessink)
     goto HANDLE_ERROR;
   }
 
-  eglglessink->last_flow = GST_FLOW_OK;
-  eglglessink->display_region.w = 0;
-  eglglessink->display_region.h = 0;
+  eglglessink->last_flow = GST_FLOW_OK;;
   eglglessink->is_closing = FALSE;
 
   if (!g_strcmp0 (g_getenv("DS_NEW_BUFAPI"), "1")){
@@ -583,46 +543,6 @@ gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf)
 
   videoFormat = eglglessink->configured_info.finfo->format;
   switch (videoFormat) {
-    case GST_VIDEO_FORMAT_BGR:
-    case GST_VIDEO_FORMAT_RGB: {
-      gint bytesPerPix = 3;
-
-      uint8_t *ptr = (uint8_t *)in_surface->surfaceList[0].dataPtr;
-
-      if (is_device_memory) {
-        m.srcDevice = (CUdeviceptr) ptr;
-        m.srcMemoryType = CU_MEMORYTYPE_DEVICE;
-      }
-      else if (is_host_memory) {
-        m.srcHost = (void *)ptr;
-        m.srcMemoryType = CU_MEMORYTYPE_HOST;
-      }
-      m.srcPitch = in_surface->surfaceList[0].planeParams.pitch[0];
-      m.dstHost = (void *)eglglessink->swData;
-      m.dstMemoryType = CU_MEMORYTYPE_HOST;
-      m.dstPitch = width * bytesPerPix;
-      m.Height = height;
-      m.WidthInBytes = width * bytesPerPix;
-
-      result = cuMemcpy2D(&m);
-      if (result != CUDA_SUCCESS) {
-        g_print ("cuMemcpy2D failed with error(%d) %s\n", result, __func__);
-        goto HANDLE_ERROR;
-      }
-
-      glActiveTexture (GL_TEXTURE0);
-      glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
-          GL_UNSIGNED_BYTE, (void *)eglglessink->swData);
-      eglglessink->stride[0] = 1;
-      eglglessink->stride[1] = 1;
-      eglglessink->stride[2] = 1;
-     }
-     break;
     case GST_VIDEO_FORMAT_RGBA:
     case GST_VIDEO_FORMAT_BGRx: {
       gint bytesPerPix = 4;
@@ -669,77 +589,8 @@ gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf)
         g_print ("cuGraphicsUnmapResources failed with error(%d) %s\n", result, __func__);
         goto HANDLE_ERROR;
       }
-
-      eglglessink->stride[0] = 1;
-      eglglessink->stride[1] = 1;
-      eglglessink->stride[2] = 1;
-
      } // case RGBA
      break;
-    case GST_VIDEO_FORMAT_I420:
-    case GST_VIDEO_FORMAT_NV12: {
-      uint8_t *ptr;
-      int i, pstride;
-      int num_planes = (int)in_surface->surfaceList[0].planeParams.num_planes;
-
-      for ( i = 0; i < num_planes; i ++) {
-        if (i == 0)
-          glActiveTexture (GL_TEXTURE0);
-        else if (i == 1)
-          glActiveTexture (GL_TEXTURE1);
-        else if (i == 2)
-          glActiveTexture (GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[i]);
-
-        result = cuGraphicsMapResources(1, &(eglglessink->cuResource[i]), 0);
-        if (result != CUDA_SUCCESS) {
-          g_print ("cuGraphicsMapResources failed with error(%d) %s\n", result, __func__);
-          return FALSE;
-        }
-        result = cuGraphicsSubResourceGetMappedArray(&dpArray, eglglessink->cuResource[i], 0, 0);
-        if (result != CUDA_SUCCESS) {
-          g_print ("cuGraphicsResourceGetMappedPointer failed with error(%d) %s\n", result, __func__);
-          goto HANDLE_ERROR;
-        }
-
-        ptr = (uint8_t *)in_surface->surfaceList[0].dataPtr + in_surface->surfaceList[0].planeParams.offset[i];
-        if (is_device_memory) {
-          m.srcDevice = (CUdeviceptr) ptr;
-          m.srcMemoryType = CU_MEMORYTYPE_DEVICE;
-        }
-        else if (is_host_memory) {
-          m.srcHost = (void *)ptr;
-          m.srcMemoryType = CU_MEMORYTYPE_HOST;
-        }
-
-        width = GST_VIDEO_INFO_COMP_WIDTH(&(eglglessink->configured_info), i);
-        height = GST_VIDEO_INFO_COMP_HEIGHT(&(eglglessink->configured_info), i);
-        pstride = GST_VIDEO_INFO_COMP_PSTRIDE(&(eglglessink->configured_info), i);
-        m.srcPitch = in_surface->surfaceList[0].planeParams.pitch[i];
-
-        m.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-        m.dstArray = dpArray;
-        m.WidthInBytes = width*pstride;
-        m.Height = height;
-
-        result = cuMemcpy2D(&m);
-        if (result != CUDA_SUCCESS) {
-          g_print ("cuMemcpy2D failed with error(%d) %s %d\n", result, __func__, __LINE__);
-          goto HANDLE_ERROR;
-        }
-
-        result = cuGraphicsUnmapResources(1, &(eglglessink->cuResource[i]), 0);
-        if (result != CUDA_SUCCESS) {
-          g_print ("cuGraphicsUnmapResources failed with error(%d) %s\n", result, __func__);
-          goto HANDLE_ERROR;
-        }
-
-        eglglessink->stride[i] = pstride;
-      }
-      eglglessink->orientation =
-          GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL;
-    }// case I420 or NV12
-    break;
     default:
       g_print("buffer format not supported\n");
       return FALSE;
@@ -932,8 +783,7 @@ gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
   CUcontext pctx;
   CUresult result;
   GLenum error;
-  int i;
-  guint width, height, pstride;
+  guint width, height;
   GstVideoFormat videoFormat;
 
   cuInit(0);
@@ -944,7 +794,6 @@ gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
    }
 
   eglglessink->cuContext = pctx;
-  eglglessink->swData = NULL;
 
   width = GST_VIDEO_SINK_WIDTH (eglglessink);
   height = GST_VIDEO_SINK_HEIGHT(eglglessink);
@@ -952,12 +801,6 @@ gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
   videoFormat = eglglessink->configured_info.finfo->format;  /* 一般都是RGBA */
 
   switch (videoFormat) {
-     case GST_VIDEO_FORMAT_BGR:
-     case GST_VIDEO_FORMAT_RGB: {
-         // Allocate memory for sw buffer
-         eglglessink->swData = (uint8_t *)malloc(width * height * 3 * sizeof(uint8_t));
-     }
-     break;
      case GST_VIDEO_FORMAT_RGBA: /* 一般都是RGBA */
      case GST_VIDEO_FORMAT_BGRx: {
          glActiveTexture(GL_TEXTURE0);  /* 绑定到纹理单元0 */
@@ -989,70 +832,6 @@ gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
          }
      }
      break;
-     case GST_VIDEO_FORMAT_I420: {
-         for (i = 0; i < 3; i++) {
-            if (i == 0)
-              glActiveTexture (GL_TEXTURE0);
-            else if (i == 1)
-              glActiveTexture (GL_TEXTURE1);
-            else if (i == 2)
-              glActiveTexture (GL_TEXTURE2);
-
-            width = GST_VIDEO_INFO_COMP_WIDTH(&(eglglessink->configured_info), i);
-            height = GST_VIDEO_INFO_COMP_HEIGHT(&(eglglessink->configured_info), i);
-
-            glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[i]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            error = glGetError();
-            if (error != GL_NO_ERROR) {
-              g_print("glerror %x error %d\n", error, __LINE__);
-              return FALSE;
-            }
-            result = cuGraphicsGLRegisterImage(&(eglglessink->cuResource[i]), eglglessink->egl_context->texture[i], GL_TEXTURE_2D, 0);
-            if (result != CUDA_SUCCESS) {
-               g_print ("cuGraphicsGLRegisterBuffer failed with error(%d) %s texture = %x\n", result, __func__, eglglessink->egl_context->texture[i]);
-               return FALSE;
-            }
-         }
-     }
-     break;
-     case GST_VIDEO_FORMAT_NV12: {
-         for (i = 0; i < 2; i++) {
-            if (i == 0)
-              glActiveTexture (GL_TEXTURE0);
-            else if (i == 1)
-              glActiveTexture (GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[i]);
-
-            width = GST_VIDEO_INFO_COMP_WIDTH(&(eglglessink->configured_info), i);
-            height = GST_VIDEO_INFO_COMP_HEIGHT(&(eglglessink->configured_info), i);
-            pstride = GST_VIDEO_INFO_COMP_PSTRIDE(&(eglglessink->configured_info), i);
-
-            if (i == 0)
-              glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width*pstride, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
-            else if ( i == 1)
-              glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, width*pstride, height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            error = glGetError();
-            if (error != GL_NO_ERROR) {
-              g_print("glerror %x error %d\n", error, __LINE__);
-              return FALSE;
-            }
-            result = cuGraphicsGLRegisterImage(&(eglglessink->cuResource[i]), eglglessink->egl_context->texture[i], GL_TEXTURE_2D, 0);
-            if (result != CUDA_SUCCESS) {
-               g_print ("cuGraphicsGLRegisterBuffer failed with error(%d) %s texture = %x\n", result, __func__, eglglessink->egl_context->texture[i]);
-               return FALSE;
-            }
-         }
-     }
-     break;
      default:
          g_print("buffer format not supported\n");
          return FALSE;
@@ -1078,11 +857,6 @@ gst_eglglessink_cuda_cleanup (GstEglGlesSink * eglglessink)
       g_print ("cuCtxDestroy failed with error(%d) %s\n", result, __func__);
     }
   }
-
-  // Free sw buffer memory
-  if (eglglessink->swData) {
-    free(eglglessink->swData);
-  }
 }
 
 /**
@@ -1102,6 +876,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
     goto HANDLE_ERROR;
   }
 
+  /* 得到视频格式信息 */
   eglglessink->configured_info = info;
   GST_VIDEO_SINK_WIDTH (eglglessink) = info.width;
   GST_VIDEO_SINK_HEIGHT (eglglessink) = info.height;
@@ -1228,12 +1003,6 @@ gst_eglglessink_close (GstEglGlesSink * eglglessink)
     eglglessink->thread = NULL;
   }
 
-  GST_OBJECT_LOCK (eglglessink);
-  if (eglglessink->pool)
-    gst_object_unref (eglglessink->pool);
-  eglglessink->pool = NULL;
-  GST_OBJECT_UNLOCK (eglglessink);
-
   if (eglglessink->profile) {
     GstEglJitterToolGetAvgs(eglglessink->pDeliveryJitter, &fJitterStd, &fJitterAvg, &fJitterHighest);
     printf("\n");
@@ -1319,7 +1088,6 @@ gst_eglglessink_finalize (GObject * object)
     g_object_unref (eglglessink->queue);
   eglglessink->queue = NULL;
 
-  g_mutex_clear (&eglglessink->window_lock);
   g_cond_clear (&eglglessink->render_cond);
   g_cond_clear (&eglglessink->render_exit_cond);
   g_mutex_clear (&eglglessink->render_lock);
@@ -1340,57 +1108,17 @@ gst_eglglessink_set_property (GObject * object, guint prop_id,
   eglglessink = GST_EGLGLESSINK (object);
 
   switch (prop_id) {
-    case PROP_CREATE_WINDOW:
-      eglglessink->create_window = g_value_get_boolean (value);
-      break;
-    case PROP_DISPLAY:
-      eglglessink->display = g_value_get_pointer (value);
-      break;
-    case PROP_FORCE_ASPECT_RATIO:
-      eglglessink->force_aspect_ratio = g_value_get_boolean (value);
-      break;
-    case PROP_WINDOW_X:
-      eglglessink->window_x = g_value_get_uint (value);
-      break;
-    case PROP_WINDOW_Y:
-      eglglessink->window_y = g_value_get_uint (value);
-      break;
-    case PROP_WINDOW_WIDTH:
-      eglglessink->window_width = g_value_get_uint (value);
-      break;
-    case PROP_WINDOW_HEIGHT:
-      eglglessink->window_height = g_value_get_uint (value);
-      break;
     case PROP_PROFILE:
       eglglessink->profile = g_value_get_uint (value);
       break;
-    case PROP_WINSYS:
-      eglglessink->winsys = g_strdup (g_value_get_string(value));
-      break;
-    case PROP_SHOW_LATENCY:
-      eglglessink->show_latency = g_value_get_boolean (value);
-      break;
-    case PROP_ROWS:
-      eglglessink->rows = g_value_get_uint (value);
-      eglglessink->change_port = -1;
-      break;
-    case PROP_COLUMNS:
-      eglglessink->columns = g_value_get_uint (value);
-      eglglessink->change_port = -1;
+    case PROP_NVBUF_API_VERSION:
+      eglglessink->nvbuf_api_version_new = g_value_get_boolean (value);
       break;
 #ifdef IS_DESKTOP
     case PROP_GPU_DEVICE_ID:
       eglglessink->gpu_id = g_value_get_uint (value);
       break;
 #endif
-    case PROP_NVBUF_API_VERSION:
-      eglglessink->nvbuf_api_version_new = g_value_get_boolean (value);
-      break;
-    case PROP_IVI_SURF_ID:
-      eglglessink->ivisurf_id = g_value_get_uint (value);
-      break;
-    /* 自定义属性 */
-
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1408,53 +1136,17 @@ gst_eglglessink_get_property (GObject * object, guint prop_id,
   eglglessink = GST_EGLGLESSINK (object);
 
   switch (prop_id) {
-    case PROP_CREATE_WINDOW:
-      g_value_set_boolean (value, eglglessink->create_window);
-      break;
-    case PROP_FORCE_ASPECT_RATIO:
-      g_value_set_boolean (value, eglglessink->force_aspect_ratio);
-      break;
-    case PROP_DISPLAY:
-      g_value_set_pointer (value, eglglessink->display);
-      break;
-    case PROP_WINDOW_X:
-      g_value_set_uint (value, eglglessink->window_x);
-      break;
-    case PROP_WINDOW_Y:
-      g_value_set_uint (value, eglglessink->window_y);
-      break;
-    case PROP_WINDOW_WIDTH:
-      g_value_set_uint (value, eglglessink->window_width);
-      break;
-    case PROP_WINDOW_HEIGHT:
-      g_value_set_uint (value, eglglessink->window_height);
-      break;
     case PROP_PROFILE:
       g_value_set_uint (value, eglglessink->profile);
       break;
-    case PROP_WINSYS:
-      g_value_set_string (value, eglglessink->winsys);
-      break;
-    case PROP_SHOW_LATENCY:
-      g_value_set_boolean (value, eglglessink->show_latency);
-      break;
-    case PROP_ROWS:
-      g_value_set_uint (value, eglglessink->rows);
-      break;
-    case PROP_COLUMNS:
-      g_value_set_uint (value, eglglessink->columns);
+    case PROP_NVBUF_API_VERSION:
+      g_value_set_boolean (value, eglglessink->nvbuf_api_version_new);
       break;
 #ifdef IS_DESKTOP
     case PROP_GPU_DEVICE_ID:
       g_value_set_uint (value, eglglessink->gpu_id);
       break;
 #endif
-    case PROP_NVBUF_API_VERSION:
-      g_value_set_boolean (value, eglglessink->nvbuf_api_version_new);
-      break;
-    case PROP_IVI_SURF_ID:
-      g_value_set_uint (value, eglglessink->ivisurf_id);
-      break;
     
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1489,68 +1181,12 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
 
   gstvideosink_class->show_frame = GST_DEBUG_FUNCPTR (gst_eglglessink_show_frame); /* 显示帧再调用该函数 */
 
-  g_object_class_install_property (gobject_class, PROP_WINSYS,
-      g_param_spec_string ("winsys", "Windowing System",
-          "Takes in strings \"x11\" or \"wayland\" to specify the windowing system to be used",
-          "x11", G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_SHOW_LATENCY,
-      g_param_spec_boolean ("show-latency", "Show Latency",
-          "To print the latency between eglSwapbuffer and Display HW flip. "
-          "This property is only avaialbe in wayland. ",
-          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_CREATE_WINDOW,
-      g_param_spec_boolean ("create-window", "Create Window",
-          "If set to true, the sink will attempt to create it's own window to "
-          "render to if none is provided. This is currently only supported "
-          "when the sink is used under X11",
-          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_FORCE_ASPECT_RATIO,
-      g_param_spec_boolean ("force-aspect-ratio",
-          "Respect aspect ratio when scaling",
-          "If set to true, the sink will attempt to preserve the incoming "
-          "frame's geometry while scaling, taking both the storage's and "
-          "display's pixel aspect ratio into account",
-          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_DISPLAY,
-      g_param_spec_pointer ("display",
-          "Set X Display to be used",
-          "If set, the sink will use the passed X Display for rendering",
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_WINDOW_X,
-      g_param_spec_uint ("window-x",
-          "Window x coordinate",
-          "X coordinate of window", 0, G_MAXINT, 10,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_WINDOW_Y,
-      g_param_spec_uint ("window-y",
-          "Window y coordinate",
-          "Y coordinate of window", 0, G_MAXINT, 10,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_WINDOW_WIDTH,
-      g_param_spec_uint ("window-width",
-          "Window width",
-          "Width of window", 0, G_MAXINT, 0,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_WINDOW_HEIGHT,
-      g_param_spec_uint ("window-height",
-          "Window height",
-          "Height of window", 0, G_MAXINT, 0,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+ 
   g_object_class_install_property (gobject_class, PROP_PROFILE,
       g_param_spec_uint ("profile",
           "profile",
           "gsteglglessink jitter information", 0, G_MAXUINT, 0,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_ROWS,
-        g_param_spec_uint ("rows",
-            "Display rows",
-            "Rows of Display", 1, G_MAXINT, 1,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_COLUMNS,
-        g_param_spec_uint ("columns",
-            "Display columns",
-            "Columns of display", 1, G_MAXINT, 1,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #ifdef IS_DESKTOP
   g_object_class_install_property (gobject_class, PROP_GPU_DEVICE_ID,
       g_param_spec_uint ("gpu-id", "Set GPU Device ID",
@@ -1559,15 +1195,11 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
           (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 #endif
-
-  // export GST_PLUGIN_PATH=/home/lieryang/Desktop/gstegl_src/gst-egl
-
-  g_object_class_install_property (gobject_class, PROP_IVI_SURF_ID,
-      g_param_spec_uint ("ivisurf-id", "Wayland IVI surface ID",
-          "Set Wayland IVI surface ID, only available for Wayland IVI shell",
-          0, G_MAXUINT, 0,
-          (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY)));
+ g_object_class_install_property (gobject_class, PROP_NVBUF_API_VERSION,
+      g_param_spec_boolean ("bufapi-version",
+          "Use new buf API",
+          "Set to use new buf API",
+          DEFAULT_NVBUF_API_VERSION_NEW, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   signals[PAINTABLE] =
     g_signal_new ("paintable",
@@ -1586,11 +1218,6 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_eglglessink_sink_template_factory));
-  g_object_class_install_property (gobject_class, PROP_NVBUF_API_VERSION,
-      g_param_spec_boolean ("bufapi-version",
-          "Use new buf API",
-          "Set to use new buf API",
-          DEFAULT_NVBUF_API_VERSION_NEW, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 }
 
 static gboolean
@@ -1609,22 +1236,13 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
   /* Init defaults */
 
   /** Flags */
-  eglglessink->have_window = FALSE;
   eglglessink->egl_context->have_surface = FALSE;
   eglglessink->egl_context->have_vbo = FALSE;
   eglglessink->egl_context->have_texture = FALSE;
   eglglessink->egl_started = FALSE;
-  eglglessink->using_own_window = FALSE;
   eglglessink->using_cuda = FALSE; /* dGPU CUDA */
   eglglessink->using_nvbufsurf = FALSE; /* Jetson */
   eglglessink->nvbuf_api_version_new = DEFAULT_NVBUF_API_VERSION_NEW;
-
-  /** Props */
-  g_mutex_init (&eglglessink->window_lock);
-  eglglessink->create_window = TRUE;
-  eglglessink->display = EGL_NO_DISPLAY;
-  eglglessink->force_aspect_ratio = TRUE;
-  eglglessink->winsys = "x11";
 
   g_mutex_init (&eglglessink->render_lock);
   g_cond_init (&eglglessink->render_cond);
@@ -1633,25 +1251,12 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
       gst_data_queue_new (queue_check_full_func, NULL, NULL, NULL);
   eglglessink->last_flow = GST_FLOW_FLUSHING;
 
-  eglglessink->render_region.x = 0;
-  eglglessink->render_region.y = 0;
-  eglglessink->render_region.w = -1;
-  eglglessink->render_region.h = -1;
-  eglglessink->render_region_changed = TRUE;
-  eglglessink->render_region_user = FALSE;
-  eglglessink->window_x = 10;
-  eglglessink->window_y = 10;
-  eglglessink->window_width = 0;
-  eglglessink->window_height = 0;
   eglglessink->profile = 0;
-  eglglessink->rows = 1;
-  eglglessink->columns = 1;
   eglglessink->cuContext = NULL;
   eglglessink->cuResource[0] = NULL;
   eglglessink->cuResource[1] = NULL;
   eglglessink->cuResource[2] = NULL;
   eglglessink->gpu_id = 0;
-
 }
 
 
