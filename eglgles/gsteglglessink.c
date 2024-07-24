@@ -475,12 +475,12 @@ egl_init (GstEglGlesSink * eglglessink) {
   /* 创建纹理 */
   eglglessink->egl_context->n_textures = 1;
   glGenTextures(1, eglglessink->egl_context->texture);
-  glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glBindTexture(GL_TEXTURE_2D, 0); 
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, eglglessink->egl_context->texture[0]);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri (GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri (GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); 
 
   g_signal_emit (eglglessink, signals[PAINTABLE], 0, eglglessink->paintable);
 
@@ -636,17 +636,17 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         }
 
         if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
-            GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
-            GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
-            gst_memory_map (mem, &map, GST_MAP_READ);
+            // GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
+            // GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
+            // gst_memory_map (mem, &map, GST_MAP_READ);
 
-            NvBufSurface *in_surface = (NvBufSurface*) map.data;
+            // NvBufSurface *in_surface = (NvBufSurface*) map.data;
 
-            if (NvBufSurfaceUnMapEglImage (in_surface, 0) !=0) {
-                GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceUnMapEglImage\n");
-            }
+            // if (NvBufSurfaceUnMapEglImage (in_surface, 0) !=0) {
+            //     GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceUnMapEglImage\n");
+            // }
 
-            gst_memory_unmap (mem, &map);
+            // gst_memory_unmap (mem, &map);
         }
 
       } else {
@@ -1644,6 +1644,9 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       EGLImageKHR image = EGL_NO_IMAGE_KHR;
       NvBufSurface *in_surface = NULL;
 
+      /* 清除当前线程的egl上下文绑定 */
+      gdk_gl_context_clear_current();
+
       mem = gst_buffer_peek_memory (buf, 0);
 
       gst_memory_map (mem, &map, GST_MAP_READ);
@@ -1654,13 +1657,15 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
        */
       /* NvBufSurface type are handled here */
       in_surface = (NvBufSurface*) map.data;
+
+
       NvBufSurfaceMapParams params;
       NvBufSurfaceGetMapParams (in_surface, 0, &params);
 
       GdkDmabufTextureBuilder *builder = gdk_dmabuf_texture_builder_new ();
       gdk_dmabuf_texture_builder_set_display (builder, gdk_display_get_default());
-      gdk_dmabuf_texture_builder_set_fourcc (builder, DRM_FORMAT_RGBA8888);
-      // gdk_dmabuf_texture_builder_set_modifier (builder, self->drm_info.drm_modifier);
+      gdk_dmabuf_texture_builder_set_fourcc (builder, DRM_FORMAT_ABGR8888);
+      gdk_dmabuf_texture_builder_set_modifier (builder, 0);
       gdk_dmabuf_texture_builder_set_width (builder, params.planes[0].width);
       gdk_dmabuf_texture_builder_set_height (builder, params.planes[0].height);
       gdk_dmabuf_texture_builder_set_n_planes (builder, params.num_planes);
@@ -1669,16 +1674,20 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       gdk_dmabuf_texture_builder_set_offset (builder, 0, params.planes[0].offset);
       gdk_dmabuf_texture_builder_set_stride (builder, 0, params.planes[0].pitch);
 
-      dma_buf_texture = gdk_dmabuf_texture_builder_build (builder, NULL, NULL, NULL);
+      GError *error = NULL;
+      dma_buf_texture = gdk_dmabuf_texture_builder_build (builder, NULL, NULL, &error);
+      if (error) {
+        g_print ("error\n");
+      }
 
       g_object_unref (builder);
 
-      // GST_DEBUG_OBJECT (eglglessink, "exporting EGLImage from nvbufsurf");
-      // /* NvBufSurface - NVMM buffer type are handled here */
-      // if (in_surface->batchSize != 1) {
-      //   GST_ERROR_OBJECT (eglglessink, "ERROR: Batch size not 1\n");
-      //   return FALSE;
-      // }
+      GST_DEBUG_OBJECT (eglglessink, "exporting EGLImage from nvbufsurf");
+      /* NvBufSurface - NVMM buffer type are handled here */
+      if (in_surface->batchSize != 1) {
+        GST_ERROR_OBJECT (eglglessink, "ERROR: Batch size not 1\n");
+        return FALSE;
+      }
 
       // /**
       //  * @brief: 从一个或多个NvBufSurface缓冲区的内存中创建一个EGLImage
@@ -1688,6 +1697,7 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       //  * @param index: 批处理中缓冲区的索引。-1指定批处理中的所有缓冲区。（上面已经判断缓冲区中只有一个）
       //  * @return: 成功返回0，否则返回-1。
       // */
+      // // g_print ("1\n");
       // if (NvBufSurfaceMapEglImage (in_surface, 0) !=0) {
       //   GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceMapEglImage\n");
       //   return FALSE;
@@ -1708,6 +1718,7 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       // GST_DEBUG_OBJECT (eglglessink, "calling glEGLImageTargetTexture2DOES");
       // if (eglglessink->glEGLImageTargetTexture2DOES) {
       //   GST_DEBUG_OBJECT (eglglessink, "caught error in glEGLImageTargetTexture2DOES : eglImage: %p", image);
+      
       //   /*  EGLImage 绑定到当前的 OpenGL ES 纹理目标上 */
       //   eglglessink->glEGLImageTargetTexture2DOES (GL_TEXTURE_EXTERNAL_OES, image); 
       //   if (got_gl_error ("glEGLImageTargetTexture2DOES")) {

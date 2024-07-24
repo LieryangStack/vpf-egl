@@ -20,21 +20,25 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gtk_snapshot_save (snapshot);
   gtk_snapshot_scale (snapshot, width, height);
 
-  GdkGLTextureBuilder *builder = gdk_gl_texture_builder_new ();
-  gdk_gl_texture_builder_set_context (builder, GTK_GST_PAINTABLE(paintable)->context);
-  gdk_gl_texture_builder_set_id (builder, GTK_GST_PAINTABLE(paintable)->sink->egl_context->texture[0]);
-  gdk_gl_texture_builder_set_width (builder, 1);
-  gdk_gl_texture_builder_set_height (builder, 1);
+  // GdkGLTextureBuilder *builder = gdk_gl_texture_builder_new ();
+  // gdk_gl_texture_builder_set_context (builder, GTK_GST_PAINTABLE(paintable)->context);
+  // gdk_gl_texture_builder_set_id (builder, GTK_GST_PAINTABLE(paintable)->sink->egl_context->texture[0]);
+  // gdk_gl_texture_builder_set_width (builder, 1);
+  // gdk_gl_texture_builder_set_height (builder, 1);
 
-  GdkTexture *texture = gdk_gl_texture_builder_build (builder,NULL, NULL);
+  // GdkTexture *texture = gdk_gl_texture_builder_build (builder,NULL, NULL);
 
-  if (dma_buf_texture)
+  if (dma_buf_texture) {
     gtk_snapshot_append_texture (snapshot, dma_buf_texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
-  else
-    gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
+    // g_print ("%s %p\n",__func__, dma_buf_texture);
+    g_object_unref (dma_buf_texture);
+    dma_buf_texture = NULL;
+  }
+  // else
+  // gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
 
-  g_object_unref (texture);
-  g_object_unref (builder);
+  // g_object_unref (texture);
+  // g_object_unref (builder);
 
   /* 用于将之前保存的状态从堆栈中恢复 */
   gtk_snapshot_restore (snapshot);
