@@ -147,7 +147,6 @@ play_video (gpointer use_data) {
   g_signal_connect (data.source, "new-manager", G_CALLBACK(select_stream_cb), NULL);
   g_signal_connect (data.sink, "paintable", G_CALLBACK(ui_render_cb), NULL);
 
-
   GstCaps *caps = gst_caps_new_simple("video/x-raw",
                                       "format", G_TYPE_STRING, "RGBA",
                                       NULL);
