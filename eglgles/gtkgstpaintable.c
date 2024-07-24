@@ -20,6 +20,16 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gtk_snapshot_save (snapshot);
   gtk_snapshot_scale (snapshot, width, height);
 
+#if defined(NVOS_IS_L4T) /* Jetson */
+
+  if (dmabuf_texture) {
+    gtk_snapshot_append_texture (snapshot, dmabuf_texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
+    g_object_unref (dmabuf_texture);
+    dmabuf_texture = NULL;
+  }
+
+#else  /* dGPU CUDA */
+
   GdkGLTextureBuilder *builder = gdk_gl_texture_builder_new ();
   gdk_gl_texture_builder_set_context (builder, GTK_GST_PAINTABLE(paintable)->context);
   gdk_gl_texture_builder_set_id (builder, GTK_GST_PAINTABLE(paintable)->sink->egl_context->texture[0]);
@@ -27,18 +37,12 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
   gdk_gl_texture_builder_set_height (builder, 1);
 
   GdkTexture *texture = gdk_gl_texture_builder_build (builder,NULL, NULL);
-
-  if (dmabuf_texture) {
-    gtk_snapshot_append_texture (snapshot, dmabuf_texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
-    g_object_unref (dmabuf_texture);
-    dmabuf_texture = NULL;
-  }
-  else
-    gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
+  gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
 
   g_object_unref (texture);
   g_object_unref (builder);
 
+#endif
   /* 用于将之前保存的状态从堆栈中恢复 */
   gtk_snapshot_restore (snapshot);
   // static gint i = 1;
