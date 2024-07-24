@@ -14,7 +14,7 @@
 
 #include <gtk/gtk.h>
 
-#include "nvbufsurface.h"
+#include <nvbufsurface.h>
 #include <libdrm/drm_fourcc.h>
 
 GdkTexture *dmabuf_texture = NULL;
@@ -1232,8 +1232,6 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
 {
   eglglessink->egl_context =
       gst_egl_adaptation_context_new (GST_ELEMENT_CAST (eglglessink));
-
-  /* Init defaults */
 
   /** Flags */
   eglglessink->egl_context->have_surface = FALSE;
