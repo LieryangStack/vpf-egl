@@ -61,7 +61,7 @@ struct _GstEglGlesSink
 
   GstVideoRectangle crop;
   gboolean crop_changed;
-  GstCaps *sinkcaps;
+  GstCaps *sinkcaps; /* 该sink支持的pad */
   GstCaps *current_caps, *configured_caps; 
   GstVideoInfo configured_info;
   gfloat stride[3];

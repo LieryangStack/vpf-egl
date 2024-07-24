@@ -60,11 +60,13 @@ _gst_video_format_new_template_caps (GstVideoFormat format)
       "framerate", GST_TYPE_FRACTION_RANGE, 0, 1, G_MAXINT, 1, NULL);
 }
 
-
+/**
+ * @brief: 元素的sinkpad支持的Caps
+ */
 GstCaps *
 gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *ctx) {
 
-  GstCaps *caps = NULL, *copy1, *copy2;
+  GstCaps *caps = NULL;
   guint i, n;
 
   GST_DEBUG_OBJECT (ctx->element,
@@ -75,55 +77,9 @@ gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *ctx)
   gst_caps_append (caps,
       _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
 
-  /* 暂时没有添加，然后支持更多视频格式 */
-
-  copy1 = gst_caps_copy (caps);
-  copy2 = gst_caps_copy (caps);
-
-  #ifndef HAVE_IOS
-  n = gst_caps_get_size (caps);
-  for (i = 0; i < n; i++) { /* video/x-raw(memory:EGLImage) */
-    GstCapsFeatures *features =
-        gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_EGL_IMAGE, NULL);
-    gst_caps_set_features (caps, i, features);
-  }
-  #endif
-
-  n = gst_caps_get_size (copy1);
-  for (i = 0; i < n; i++) { /* video/x-raw(meta:GstVideoGLTextureUploadMeta) */
-    GstCapsFeatures *features =
-        gst_caps_features_new
-        (GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META, NULL);
-    gst_caps_set_features (copy1, i, features);
-  }
-
-  gst_caps_append (caps, copy1);
-  gst_caps_append (caps, copy2);
-
-  n = gst_caps_get_size (caps);
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGRx));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGBA));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_I420));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_NV12));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_RGB));
-  gst_caps_append (caps,
-      _gst_video_format_new_template_caps (GST_VIDEO_FORMAT_BGR));
-  for (i = n; i < n+6; i++) {  /* video/x-raw(memory:NVMM) */
-    GstCapsFeatures *features =
-        gst_caps_features_new ("memory:NVMM", NULL);
-    gst_caps_set_features (caps, i, features);
-  }
-
-  /* 是否应该添加检查  是否支持 RGBA8888 config 属性？？ */
-  // } else {
-  //   GST_INFO_OBJECT (ctx->element,
-  //       "EGL display doesn't support RGBA8888 config");
-  // }
+  GstCapsFeatures *features =
+      gst_caps_features_new ("memory:NVMM", NULL); /* video/x-raw(memory:NVMM) */
+  gst_caps_set_features (caps, 0, features);
 
   return caps;
 }

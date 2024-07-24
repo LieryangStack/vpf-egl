@@ -40,24 +40,8 @@ static GstStaticPadTemplate gst_eglglessink_sink_template_factory =
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS (
-#ifndef HAVE_IOS
-        GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_EGL_IMAGE,
-            "{ " "RGBA, BGRA, ARGB, ABGR, " "RGBx, BGRx, xRGB, xBGR, "
-            "AYUV, Y444, I420, YV12, " "NV12, NV21, Y42B, Y41B, "
-            "RGB, BGR, RGB16 }") ";"
-#endif
-        GST_VIDEO_CAPS_MAKE_WITH_FEATURES
-        (GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META,
-            "{ " "RGBA, BGRA, ARGB, ABGR, " "RGBx, BGRx, xRGB, xBGR, "
-            "AYUV, Y444, I420, YV12, " "NV12, NV21, Y42B, Y41B, "
-            "RGB, BGR, RGB16 }") ";"
-        GST_VIDEO_CAPS_MAKE ("{ "
-            "RGBA, BGRA, ARGB, ABGR, " "RGBx, BGRx, xRGB, xBGR, "
-            "AYUV, Y444, I420, YV12, " "NV12, NV21, Y42B, Y41B, "
-            "RGB, BGR, RGB16 }")
-            ";"
         GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("memory:NVMM",
-            "{ " "BGRx, RGBA, I420, NV12, BGR, RGB }")
+            "{ " "RGBA }")
         ));
 
 /* Filter signals and args */
@@ -439,10 +423,10 @@ gst_egl_image_buffer_pool_init (GstEGLImageBufferPool * pool)
 }
 
 
-
 /* 定义了继承于 GstVideoSink 的 GstEglGlesSink 对象  */
 #define parent_class gst_eglglessink_parent_class
 G_DEFINE_TYPE (GstEglGlesSink, gst_eglglessink, GST_TYPE_VIDEO_SINK);
+
 
 /**
  * @brief: 1. 检查gtk是否初始化
@@ -475,12 +459,12 @@ egl_init (GstEglGlesSink * eglglessink) {
   /* 创建纹理 */
   eglglessink->egl_context->n_textures = 1;
   glGenTextures(1, eglglessink->egl_context->texture);
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, eglglessink->egl_context->texture[0]);
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri (GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri (GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); 
+  glBindTexture(GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_2D, 0); 
 
   g_signal_emit (eglglessink, signals[PAINTABLE], 0, eglglessink->paintable);
 
@@ -636,6 +620,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
         }
 
         if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
+
             // GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
             // GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
             // gst_memory_map (mem, &map, GST_MAP_READ);
@@ -697,14 +682,10 @@ render_thread_func (GstEglGlesSink * eglglessink) {
     gst_eglglessink_cuda_cleanup(eglglessink);
   }
 
-  // gst_egl_adaptation_cleanup (eglglessink->egl_context);
-
   if (eglglessink->configured_caps) {
     gst_caps_unref (eglglessink->configured_caps);
     eglglessink->configured_caps = NULL;
   }
-
-  // gst_egl_adaptation_release_thread ();
 
   g_value_init (&val, GST_TYPE_G_THREAD);
   g_value_set_boxed (&val, g_thread_self ());
@@ -900,437 +881,6 @@ gst_eglglessink_crop_changed (GstEglGlesSink * eglglessink,
   return (eglglessink->crop.x != 0 || eglglessink->crop.y != 0 ||
       eglglessink->crop.w != eglglessink->configured_info.width ||
       eglglessink->crop.h != eglglessink->configured_info.height);
-}
-
-static gboolean
-gst_eglglessink_fill_texture (GstEglGlesSink * eglglessink, GstBuffer * buf)
-{
-  GstVideoFrame vframe;
-#ifndef GST_DISABLE_GST_DEBUG
-  gint w;
-#endif
-  gint h;
-
-  memset (&vframe, 0, sizeof (vframe));
-
-  if (!gst_video_frame_map (&vframe, &eglglessink->configured_info, buf,
-          GST_MAP_READ)) {
-    GST_ERROR_OBJECT (eglglessink, "Couldn't map frame");
-    goto HANDLE_ERROR;
-  }
-#ifndef GST_DISABLE_GST_DEBUG
-  w = GST_VIDEO_FRAME_WIDTH (&vframe);
-#endif
-  h = GST_VIDEO_FRAME_HEIGHT (&vframe);
-
-  GST_DEBUG_OBJECT (eglglessink,
-      "Got buffer %p: %dx%d size %" G_GSIZE_FORMAT, buf, w, h,
-      gst_buffer_get_size (buf));
-
-  switch (eglglessink->configured_info.finfo->format) {
-    case GST_VIDEO_FORMAT_BGR:
-    case GST_VIDEO_FORMAT_RGB:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_WIDTH (&vframe);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w * 3) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w * 3) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (GST_ROUND_UP_2 (c_w * 3) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else if (c_w * 3 == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width * 3) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width * 3) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (GST_ROUND_UP_2 (stride_width * 3) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else if (stride_width * 3 == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, stride_width, h, 0, GL_RGB,
-          GL_UNSIGNED_BYTE, GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0));
-      break;
-    }
-    case GST_VIDEO_FORMAT_RGB16:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_WIDTH (&vframe);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w * 2) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w * 2) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (c_w * 2 == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width * 4) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width * 2) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (stride_width * 2 == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, stride_width, h, 0, GL_RGB,
-          GL_UNSIGNED_SHORT_5_6_5, GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0));
-      break;
-    }
-    case GST_VIDEO_FORMAT_RGBA:
-    case GST_VIDEO_FORMAT_BGRA:
-    case GST_VIDEO_FORMAT_ARGB:
-    case GST_VIDEO_FORMAT_ABGR:
-    case GST_VIDEO_FORMAT_RGBx:
-    case GST_VIDEO_FORMAT_BGRx:
-    case GST_VIDEO_FORMAT_xRGB:
-    case GST_VIDEO_FORMAT_xBGR:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_WIDTH (&vframe);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w * 4) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (c_w * 4 == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width * 4) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (stride_width * 4 == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, stride_width, h, 0,
-          GL_RGBA, GL_UNSIGNED_BYTE, GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0));
-      break;
-    }
-    case GST_VIDEO_FORMAT_AYUV:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_WIDTH (&vframe);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w * 4) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (c_w * 4 == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width * 4) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (stride_width * 4 == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, stride_width, h, 0,
-          GL_RGBA, GL_UNSIGNED_BYTE, GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0));
-      break;
-    }
-    case GST_VIDEO_FORMAT_Y444:
-    case GST_VIDEO_FORMAT_I420:
-    case GST_VIDEO_FORMAT_YV12:
-    case GST_VIDEO_FORMAT_Y42B:
-    case GST_VIDEO_FORMAT_Y41B:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_COMP_WIDTH (&vframe, 0);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (GST_ROUND_UP_2 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else if (c_w == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (GST_ROUND_UP_2 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else if (stride_width == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
-          stride_width,
-          GST_VIDEO_FRAME_COMP_HEIGHT (&vframe, 0),
-          0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-          GST_VIDEO_FRAME_COMP_DATA (&vframe, 0));
-
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 1);
-      stride_width = c_w = GST_VIDEO_FRAME_COMP_WIDTH (&vframe, 1);
-
-      glActiveTexture (GL_TEXTURE1);
-
-      if (GST_ROUND_UP_8 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (GST_ROUND_UP_2 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else if (c_w == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (GST_ROUND_UP_2 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else if (stride_width == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[1] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[1]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
-          stride_width,
-          GST_VIDEO_FRAME_COMP_HEIGHT (&vframe, 1),
-          0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-          GST_VIDEO_FRAME_COMP_DATA (&vframe, 1));
-
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 2);
-      stride_width = c_w = GST_VIDEO_FRAME_COMP_WIDTH (&vframe, 2);
-
-      glActiveTexture (GL_TEXTURE2);
-
-      if (GST_ROUND_UP_8 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (GST_ROUND_UP_2 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else if (c_w == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (GST_ROUND_UP_2 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else if (stride_width == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[2] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[2]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
-          stride_width,
-          GST_VIDEO_FRAME_COMP_HEIGHT (&vframe, 2),
-          0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-          GST_VIDEO_FRAME_COMP_DATA (&vframe, 2));
-      break;
-    }
-    case GST_VIDEO_FORMAT_NV12:
-    case GST_VIDEO_FORMAT_NV21:{
-      gint stride;
-      gint stride_width;
-      gint c_w;
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-      stride_width = c_w = GST_VIDEO_FRAME_COMP_WIDTH (&vframe, 0);
-
-      glActiveTexture (GL_TEXTURE0);
-
-      if (GST_ROUND_UP_8 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (GST_ROUND_UP_2 (c_w) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else if (c_w == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-      } else {
-        stride_width = stride;
-
-        if (GST_ROUND_UP_8 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (GST_ROUND_UP_2 (stride_width) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else if (stride_width == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[0] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[0]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE,
-          stride_width,
-          GST_VIDEO_FRAME_COMP_HEIGHT (&vframe, 0),
-          0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-          GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0));
-
-
-      stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 1);
-      stride_width = c_w = GST_VIDEO_FRAME_COMP_WIDTH (&vframe, 1);
-
-      glActiveTexture (GL_TEXTURE1);
-
-      if (GST_ROUND_UP_8 (c_w * 2) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-      } else if (GST_ROUND_UP_4 (c_w * 2) == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-      } else if (c_w * 2 == stride) {
-        glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-      } else {
-        stride_width = stride / 2;
-
-        if (GST_ROUND_UP_8 (stride_width * 2) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 8);
-        } else if (GST_ROUND_UP_4 (stride_width * 2) == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
-        } else if (stride_width * 2 == stride) {
-          glPixelStorei (GL_UNPACK_ALIGNMENT, 2);
-        } else {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported stride %d", stride);
-          goto HANDLE_ERROR;
-        }
-      }
-      if (got_gl_error ("glPixelStorei"))
-        goto HANDLE_ERROR;
-
-      eglglessink->stride[1] = ((gdouble) stride_width) / ((gdouble) c_w);
-
-      glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[1]);
-      glTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA,
-          stride_width,
-          GST_VIDEO_FRAME_COMP_HEIGHT (&vframe, 1),
-          0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE,
-          GST_VIDEO_FRAME_PLANE_DATA (&vframe, 1));
-      break;
-    }
-    default:
-      g_assert_not_reached ();
-      break;
-  }
-
-  if (got_gl_error ("glTexImage2D"))
-    goto HANDLE_ERROR;
-
-  gst_video_frame_unmap (&vframe);
-
-  return TRUE;
-
-HANDLE_ERROR:
-  {
-    if (vframe.buffer)
-      gst_video_frame_unmap (&vframe);
-    return FALSE;
-  }
 }
 
 static gboolean
@@ -1580,8 +1130,6 @@ HANDLE_ERROR:
 /* 更新纹理*/
 static GstFlowReturn
 gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
-  
-  GstVideoCropMeta *crop = NULL;
 
   if (!buf) {
     GST_DEBUG_OBJECT (eglglessink, "Rendering previous buffer again");
@@ -1589,57 +1137,7 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
 
     GstMemory *mem;
 
-    GstVideoGLTextureUploadMeta *upload_meta;
-
-    crop = gst_buffer_get_video_crop_meta (buf);
-
-    upload_meta = gst_buffer_get_video_gl_texture_upload_meta (buf);
-
-    if (gst_eglglessink_crop_changed (eglglessink, crop)) {
-      if (crop) {
-        eglglessink->crop.x = crop->x;
-        eglglessink->crop.y = crop->y;
-        eglglessink->crop.w = crop->width;
-        eglglessink->crop.h = crop->height;
-      } else {
-        eglglessink->crop.x = 0;
-        eglglessink->crop.y = 0;
-        eglglessink->crop.w = eglglessink->configured_info.width;
-        eglglessink->crop.h = eglglessink->configured_info.height;
-      }
-      eglglessink->crop_changed = TRUE;
-    }
-
-    if (upload_meta) {
-      gint i;
-
-      if (upload_meta->n_textures != (guint)eglglessink->egl_context->n_textures)
-        goto HANDLE_ERROR;
-
-      if (eglglessink->egl_context->n_textures > 3) {
-        goto HANDLE_ERROR;
-      }
-
-      for (i = 0; i < eglglessink->egl_context->n_textures; i++) {
-        if (i == 0)
-          glActiveTexture (GL_TEXTURE0);
-        else if (i == 1)
-          glActiveTexture (GL_TEXTURE1);
-        else if (i == 2)
-          glActiveTexture (GL_TEXTURE2);
-
-        glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[i]);
-      }
-
-      if (!gst_video_gl_texture_upload_meta_upload (upload_meta,
-              eglglessink->egl_context->texture))
-        goto HANDLE_ERROR;
-
-      eglglessink->orientation = upload_meta->texture_orientation;
-      eglglessink->stride[0] = 1;
-      eglglessink->stride[1] = 1;
-      eglglessink->stride[2] = 1;
-    } else if (eglglessink->using_nvbufsurf) { /* 如果是Jetson设备会执行 */
+    if (eglglessink->using_nvbufsurf) { /* 如果是Jetson设备会执行 */
       GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
       EGLImageKHR image = EGL_NO_IMAGE_KHR;
       NvBufSurface *in_surface = NULL;
@@ -1737,64 +1235,14 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       // GST_DEBUG_OBJECT (eglglessink, "done uploading");
 
       gst_memory_unmap (mem, &map);
-    } else if ( gst_buffer_n_memory (buf) >= 1 && \
-               (mem = gst_buffer_peek_memory (buf, 0)) && \
-                gst_is_egl_image_memory (mem)) {
-      guint n, i;
-
-      n = gst_buffer_n_memory (buf);
-
-      for (i = 0; i < n; i++) {
-        mem = gst_buffer_peek_memory (buf, i);
-
-        g_assert (gst_is_egl_image_memory (mem));
-
-        if (i == 0)
-          glActiveTexture (GL_TEXTURE0);
-        else if (i == 1)
-          glActiveTexture (GL_TEXTURE1);
-        else if (i == 2)
-          glActiveTexture (GL_TEXTURE2);
-
-        glBindTexture (GL_TEXTURE_2D, eglglessink->egl_context->texture[i]);
-
-        if (eglglessink->glEGLImageTargetTexture2DOES) {
-          eglglessink->glEGLImageTargetTexture2DOES (GL_TEXTURE_2D,
-              gst_egl_image_memory_get_image (mem));
-          if (got_gl_error ("glEGLImageTargetTexture2DOES"))
-            goto HANDLE_ERROR;
-        } else {
-          GST_ERROR_OBJECT (eglglessink,
-              "glEGLImageTargetTexture2DOES not supported");
-          return GST_FLOW_ERROR;
-        }
-
-        eglglessink->orientation = gst_egl_image_memory_get_orientation (mem);
-        if (eglglessink->orientation !=
-            GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL
-            && eglglessink->orientation !=
-            GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_FLIP) {
-          GST_ERROR_OBJECT (eglglessink, "Unsupported EGLImage orientation");
-          return GST_FLOW_ERROR;
-        }
-      }
-
-      eglglessink->last_uploaded_buffer = buf;
-
-      eglglessink->stride[0] = 1;
-      eglglessink->stride[1] = 1;
-      eglglessink->stride[2] = 1;
     } else if (eglglessink->using_cuda) {
       //Handle Cuda Buffers
       if (!gst_eglglessink_cuda_buffer_copy(eglglessink, buf)) {
         goto HANDLE_ERROR;
       }
     } else {
-      eglglessink->orientation =
-          GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL;
-      if (!gst_eglglessink_fill_texture (eglglessink, buf))
-        goto HANDLE_ERROR;
-      eglglessink->last_uploaded_buffer = buf;
+      GST_ERROR_OBJECT (eglglessink, "Not Jetson or dGPU device!!!");
+      goto HANDLE_ERROR;
     }
   }
 
@@ -2293,6 +1741,9 @@ HANDLE_ERROR:
   return FALSE;
 }
 
+/**
+ * @brief: 设定sink pad的caps
+ */
 static gboolean
 gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
 
@@ -2657,8 +2108,8 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
   gstelement_class->change_state = gst_eglglessink_change_state;
   gstelement_class->set_context = gst_eglglessink_set_context; /* gst_element_set_context 函数调用 */
 
-  gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps);
-  gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps);
+  gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps); /* 设定sink pad的caps */
+  gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps); /* 得到sink pad支持的cpas */
   gstbasesink_class->propose_allocation = GST_DEBUG_FUNCPTR (gst_eglglessink_propose_allocation); /* 进行内存池BufferPool的创建 */
   gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 显示帧先调用该函数 */
   gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_eglglessink_query);
@@ -2791,8 +2242,8 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
   eglglessink->egl_context->have_texture = FALSE;
   eglglessink->egl_started = FALSE;
   eglglessink->using_own_window = FALSE;
-  eglglessink->using_cuda = FALSE;
-  eglglessink->using_nvbufsurf = FALSE;
+  eglglessink->using_cuda = FALSE; /* dGPU CUDA */
+  eglglessink->using_nvbufsurf = FALSE; /* Jetson */
   eglglessink->nvbuf_api_version_new = DEFAULT_NVBUF_API_VERSION_NEW;
 
   /** Props */
