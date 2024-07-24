@@ -1715,27 +1715,27 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
 
   /* 如果是 Jetson 设备，则执行 */
   if (!eglglessink->using_cuda) {
-  newpool = gst_egl_image_buffer_pool_new( gst_eglglessink_egl_image_buffer_pool_send_blocking,
-                                           gst_object_ref (eglglessink),
-                                           gst_eglglessink_egl_image_buffer_pool_on_destroy);
-  config = gst_buffer_pool_get_config (newpool);
-  
-  /*我们至少需要2个缓冲区，因为我们保留了最后一个*/
-  gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
-  gst_buffer_pool_config_set_allocator (config, NULL, &params);
-  if (!gst_buffer_pool_set_config (newpool, config)) {
-    gst_object_unref (newpool);
-    GST_ERROR_OBJECT (eglglessink, "Failed to set buffer pool configuration");
-    return FALSE;
-  }
+    newpool = gst_egl_image_buffer_pool_new( gst_eglglessink_egl_image_buffer_pool_send_blocking,
+                                            gst_object_ref (eglglessink),
+                                            gst_eglglessink_egl_image_buffer_pool_on_destroy);
+    config = gst_buffer_pool_get_config (newpool);
+    
+    /* 我们至少需要2个缓冲区，因为我们保留了 last buffer */
+    gst_buffer_pool_config_set_params (config, caps, info.size, 2, 0);
+    gst_buffer_pool_config_set_allocator (config, NULL, &params);
+    if (!gst_buffer_pool_set_config (newpool, config)) {
+      gst_object_unref (newpool);
+      GST_ERROR_OBJECT (eglglessink, "Failed to set buffer pool configuration");
+      return FALSE;
+    }
 
-  GST_OBJECT_LOCK (eglglessink);
-  oldpool = eglglessink->pool;
-  eglglessink->pool = newpool;
-  GST_OBJECT_UNLOCK (eglglessink);
+    GST_OBJECT_LOCK (eglglessink);
+    oldpool = eglglessink->pool;
+    eglglessink->pool = newpool;
+    GST_OBJECT_UNLOCK (eglglessink);
 
-  if (oldpool)
-    gst_object_unref (oldpool);
+    if (oldpool)
+      gst_object_unref (oldpool);
   }
 
   gst_caps_replace (&eglglessink->current_caps, caps);
