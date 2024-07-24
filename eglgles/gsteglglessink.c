@@ -17,7 +17,7 @@
 #include "nvbufsurface.h"
 #include <libdrm/drm_fourcc.h>
 
-GdkTexture *dma_buf_texture = NULL;
+GdkTexture *dmabuf_texture = NULL;
 
 #ifdef IS_DESKTOP
 #define DEFAULT_NVBUF_API_VERSION_NEW   TRUE
@@ -514,7 +514,7 @@ gtk_gst_paintable_set_texture_invoke (gpointer data)
 
 
 /**
- * @brief: 处理 GstBuffer， 然后进行渲染
+ * @brief: 处理 GstBuffer，然后进行渲染
 */
 static gpointer
 render_thread_func (GstEglGlesSink * eglglessink) {
@@ -597,11 +597,11 @@ render_thread_func (GstEglGlesSink * eglglessink) {
       if (eglglessink->configured_caps) {
         last_flow = gst_eglglessink_upload (eglglessink, buf); /* 将GPU内部的纹理更新到我们创建的纹理 eglglessink->egl_context->texture[0] */
         if (last_flow == GST_FLOW_OK)
-            // gdk_paintable_invalidate_contents (eglglessink->paintable);
-              g_main_context_invoke_full (NULL,
-                              G_PRIORITY_DEFAULT,
-                              gtk_gst_paintable_set_texture_invoke,
-                              eglglessink, NULL);
+            gdk_paintable_invalidate_contents (eglglessink->paintable);
+              // g_main_context_invoke_full (NULL,
+              //                 G_PRIORITY_DEFAULT,
+              //                 gtk_gst_paintable_set_texture_invoke,
+              //                 eglglessink, NULL);
           // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
       } else {
         last_flow = GST_FLOW_OK;
@@ -619,10 +619,12 @@ render_thread_func (GstEglGlesSink * eglglessink) {
           eglglessink->last_uploaded_buffer = NULL;
         }
 
+        /* 上一次buffer（仅仅Jetson设备）*/
         if (eglglessink->last_uploaded_buffer && eglglessink->using_nvbufsurf) {
 
             // GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
             // GstMemory *mem = gst_buffer_peek_memory (eglglessink->last_uploaded_buffer, 0);
+
             // gst_memory_map (mem, &map, GST_MAP_READ);
 
             // NvBufSurface *in_surface = (NvBufSurface*) map.data;
@@ -866,22 +868,6 @@ gst_eglglessink_queue_object (GstEglGlesSink * eglglessink, GstMiniObject * obj)
   return (obj ? last_flow : GST_FLOW_OK);
 }
 
-
-static gboolean
-gst_eglglessink_crop_changed (GstEglGlesSink * eglglessink,
-    GstVideoCropMeta * crop)
-{
-  if (crop) {
-    return (crop->x != (guint)eglglessink->crop.x ||
-        crop->y != (guint)eglglessink->crop.y ||
-        crop->width != (guint)eglglessink->crop.w ||
-        crop->height != (guint)eglglessink->crop.h);
-  }
-
-  return (eglglessink->crop.x != 0 || eglglessink->crop.y != 0 ||
-      eglglessink->crop.w != eglglessink->configured_info.width ||
-      eglglessink->crop.h != eglglessink->configured_info.height);
-}
 
 static gboolean
 gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf) {
@@ -1139,20 +1125,13 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
 
     if (eglglessink->using_nvbufsurf) { /* 如果是Jetson设备会执行 */
       GstMapInfo map = { NULL, (GstMapFlags) 0, NULL, 0, 0, };
-      EGLImageKHR image = EGL_NO_IMAGE_KHR;
       NvBufSurface *in_surface = NULL;
 
       mem = gst_buffer_peek_memory (buf, 0);
 
       gst_memory_map (mem, &map, GST_MAP_READ);
 
-      /* Types of Buffers handled -
-        *     NvBufSurface
-        *                     - NVMM buffer type
-       */
-      /* NvBufSurface type are handled here */
       in_surface = (NvBufSurface*) map.data;
-
 
       NvBufSurfaceMapParams params;
       NvBufSurfaceGetMapParams (in_surface, 0, &params);
@@ -1170,9 +1149,10 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       gdk_dmabuf_texture_builder_set_stride (builder, 0, params.planes[0].pitch);
 
       GError *error = NULL;
-      dma_buf_texture = gdk_dmabuf_texture_builder_build (builder, NULL, NULL, &error);
+      dmabuf_texture = gdk_dmabuf_texture_builder_build (builder, NULL, NULL, &error);
       if (error) {
-        g_print ("error\n");
+        g_print ("dmabuf build texture error\n");
+        g_clear_error (&error);
       }
 
       g_object_unref (builder);
@@ -1184,59 +1164,12 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
         return FALSE;
       }
 
-      // /**
-      //  * @brief: 从一个或多个NvBufSurface缓冲区的内存中创建一个EGLImage
-      //  *         仅支持内存类型NVBUF_MEM_SURFACE_ARRAY (只能Jetson使用)
-      //  *         创建的EGLImage存储在 in_surface->surfaceList->mappedAddr->eglImage
-      //  * @param surf: surf 指向NvBufSurface结构的指针，函数将所创建的EGLImage的指针存储在此结构成员中
-      //  * @param index: 批处理中缓冲区的索引。-1指定批处理中的所有缓冲区。（上面已经判断缓冲区中只有一个）
-      //  * @return: 成功返回0，否则返回-1。
-      // */
-      // // g_print ("1\n");
-      // if (NvBufSurfaceMapEglImage (in_surface, 0) !=0) {
-      //   GST_ERROR_OBJECT (eglglessink, "ERROR: NvBufSurfaceMapEglImage\n");
-      //   return FALSE;
-      // }
+      eglglessink->last_uploaded_buffer = buf;
 
-      // /* EGLImageKHR类型 */
-      // image = in_surface->surfaceList[0].mappedAddr.eglImage;
-
-      // glActiveTexture (GL_TEXTURE0);
-      // if (got_gl_error ("glActiveTexture")) {
-      //   goto HANDLE_ERROR;
-      // }
-      // glBindTexture (GL_TEXTURE_EXTERNAL_OES, eglglessink->egl_context->texture[0]);
-      // if (got_gl_error ("glBindTexture")) {
-      //   goto HANDLE_ERROR;
-      // }
-
-      // GST_DEBUG_OBJECT (eglglessink, "calling glEGLImageTargetTexture2DOES");
-      // if (eglglessink->glEGLImageTargetTexture2DOES) {
-      //   GST_DEBUG_OBJECT (eglglessink, "caught error in glEGLImageTargetTexture2DOES : eglImage: %p", image);
-      
-      //   /*  EGLImage 绑定到当前的 OpenGL ES 纹理目标上 */
-      //   eglglessink->glEGLImageTargetTexture2DOES (GL_TEXTURE_EXTERNAL_OES, image); 
-      //   if (got_gl_error ("glEGLImageTargetTexture2DOES")) {
-      //     goto HANDLE_ERROR;
-      //   }
-      // } else {
-      //   GST_ERROR_OBJECT (eglglessink,
-      //       "glEGLImageTargetTexture2DOES not supported");
-      //   return GST_FLOW_ERROR;
-      // }
-
-      // eglglessink->orientation = GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL;
-
-      // eglglessink->last_uploaded_buffer = buf;
-
-      // eglglessink->stride[0] = 1;
-      // eglglessink->stride[1] = 1;
-      // eglglessink->stride[2] = 1;
-      // GST_DEBUG_OBJECT (eglglessink, "done uploading");
+      GST_DEBUG_OBJECT (eglglessink, "done uploading");
 
       gst_memory_unmap (mem, &map);
-    } else if (eglglessink->using_cuda) {
-      //Handle Cuda Buffers
+    } else if (eglglessink->using_cuda) {  /* dGPU CUDA 更新纹理 */
       if (!gst_eglglessink_cuda_buffer_copy(eglglessink, buf)) {
         goto HANDLE_ERROR;
       }
@@ -2303,12 +2236,7 @@ gst_egl_image_buffer_pool_new (GstEGLImageBufferPoolSendBlockingAllocate blockin
  * 初始化插件的入口点，初始化插件本身，注册元素工厂和其他功能
 */
 static gboolean
-#ifdef IS_DESKTOP
-nvdsgst_eglglessink_plugin_init (GstPlugin * plugin)
-#else
-eglglessink_plugin_init (GstPlugin * plugin)
-#endif
-{
+vpfeglglessink_plugin_init (GstPlugin * plugin) {
   /* debug category for fltering log messages */
   GST_DEBUG_CATEGORY_INIT (gst_eglglessink_debug, "nveglglessink",
       0, "Simple EGL/GLES Sink");
@@ -2324,17 +2252,8 @@ eglglessink_plugin_init (GstPlugin * plugin)
 */
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-#ifdef IS_DESKTOP
     vpfeglglessink,
-#else
-    vpfeglglessink,
-#endif
     "EGL/GLES sink",
-#ifdef IS_DESKTOP
-    nvdsgst_eglglessink_plugin_init,
+    vpfeglglessink_plugin_init,
     VERSION,
-#else
-    eglglessink_plugin_init,
-    VERSION,
-#endif
     GST_LICENSE, GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)
