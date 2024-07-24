@@ -1644,9 +1644,6 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
       EGLImageKHR image = EGL_NO_IMAGE_KHR;
       NvBufSurface *in_surface = NULL;
 
-      /* 清除当前线程的egl上下文绑定 */
-      gdk_gl_context_clear_current();
-
       mem = gst_buffer_peek_memory (buf, 0);
 
       gst_memory_map (mem, &map, GST_MAP_READ);
