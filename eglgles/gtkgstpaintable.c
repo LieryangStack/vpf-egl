@@ -30,8 +30,8 @@ gtk_gst_paintable_paintable_snapshot (GdkPaintable *paintable,
 
   if (dmabuf_texture) {
     gtk_snapshot_append_texture (snapshot, dmabuf_texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
-    // g_object_unref (dmabuf_texture);
-    // dmabuf_texture = NULL;
+    g_object_unref (dmabuf_texture);
+    dmabuf_texture = NULL;
   }
   else
     gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT(0, 0, 1, 1));
