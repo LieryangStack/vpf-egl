@@ -26,6 +26,7 @@
               "/usr/include/pixman-1",
               "/usr/include/libmount",
               "/usr/include/blkid",
+              "/opt/gstreamer/include/gstreamer-1.0",
               "/opt/src/glib-2.81.0",
               "/opt/src/gstreamer-1.24.5",
               "/opt/src/gtk-4.15.3",

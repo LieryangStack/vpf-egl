@@ -72,3 +72,4 @@ shared_library ('vpfeglglessink',
   install: true,
   install_dir: '/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0',
   c_args: ['-Wl,--no-undefined'])
+
