@@ -14,38 +14,6 @@ gst_egl_adaption_init (void)
       "EGL adaption layer");
 }
 
-/*获取EGL错误*/
-gboolean
-got_egl_error (const char *wtf)
-{
-  EGLint error;
-
-  if ((error = eglGetError ()) != EGL_SUCCESS) {
-    GST_CAT_DEBUG (GST_CAT_DEFAULT, "EGL ERROR: %s returned 0x%04x", wtf,
-        error);
-    return TRUE;
-  }
-
-  return FALSE;
-}
-
-
-/**
- * @brief: 该函数只有在创建GstBuffer的时候才会调用，而且创建的这个空GstBuffer只是为了回复别人查询，并不是真正的GstBuffer
-*/
-static void
-gst_egl_gles_image_data_free (GstEGLGLESImageData * data)
-{
-  if (!eglMakeCurrent (data->display,
-      EGL_NO_SURFACE, EGL_NO_SURFACE, data->eglcontext)) {
-      got_egl_error ("eglMakeCurrent");
-      g_slice_free (GstEGLGLESImageData, data);
-      return;
-  }
-  glDeleteTextures (1, &data->texture);
-  g_slice_free (GstEGLGLESImageData, data);
-}
-
 
 /**
  * @brief: 创建一个"video/x-raw"的GstCap
@@ -67,7 +35,6 @@ GstCaps *
 gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext *ctx) {
 
   GstCaps *caps = NULL;
-  guint i, n;
 
   GST_DEBUG_OBJECT (ctx->element,
       "Building initial list of wanted eglattribs per format");

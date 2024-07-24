@@ -38,13 +38,6 @@
 G_BEGIN_DECLS
 
 typedef struct _GstEglAdaptationContext GstEglAdaptationContext;
-typedef struct _GstEglGlesImageFmt GstEglGlesImageFmt; /* 没有使用 */
-
-#ifdef HAVE_IOS
-typedef struct _GstEaglContext GstEaglContext;
-#else
-typedef struct _GstEglGlesRenderContext GstEglGlesRenderContext;  /* EGLConfig、EGLContext、EGLSurface（egl配置、上下文、表面） */
-#endif
 
 typedef struct _coord5
 {
@@ -55,17 +48,6 @@ typedef struct _coord5
   float b;                      /* texpos y */
 } coord5;
 
-
-/***
- * @GstEGLGLESImageData
- * 内存池创建GstBuffer的时候是用
-*/
-typedef struct
-{
-  GLuint texture;
-  EGLDisplay display;
-  EGLContext eglcontext;
-} GstEGLGLESImageData;
 
 /*
  * GstEglAdaptationContext:
@@ -128,7 +110,6 @@ void gst_egl_adaptation_context_free (GstEglAdaptationContext * ctx);
 GstCaps *gst_egl_adaptation_fill_supported_fbuffer_configs (GstEglAdaptationContext * ctx);
 
 gboolean got_gl_error (const char *wtf);
-gboolean got_egl_error (const char *wtf);
 
 G_END_DECLS
 
