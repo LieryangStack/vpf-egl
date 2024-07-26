@@ -1221,9 +1221,8 @@ gst_vpf_eglglessink_class_init (GstVpfEglGlesSinkClass * klass)
   gst_element_class_set_static_metadata (gstelement_class,
       "EGL/GLES vout Sink",
       "Sink/Video",
-      "An EGL/GLES Video Output Sink Implementing the VideoOverlay interface",
-      "Reynaldo H. Verdejo Pinochet <reynaldo@collabora.com>, "
-      "Sebastian Dröge <sebastian.droege@collabora.co.uk>");
+      "An EGL/GLES Video Output Sink Implementing the GtkPaintable",
+      "Li Eryang <sxlisibo@gmail.com>");
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_vpf_eglglessink_sink_template_factory));
