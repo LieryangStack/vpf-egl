@@ -10,8 +10,7 @@ ui_render_cb (GstElement *element, GdkPaintable *paintable, gpointer data){
   gtk_picture_set_paintable (GTK_PICTURE(picture), paintable);
 }
 
-typedef struct _CustomData
-{
+typedef struct _CustomData {
   GstElement *pipeline;
   GstElement *source;
 
@@ -102,7 +101,7 @@ static void
 get_jitterbuffer (GstElement * object,
                   GstElement * jitterbuffer,
                   gpointer user_data) {
-  g_print ("jitterbuffer = %s\n", G_OBJECT_TYPE_NAME(jitterbuffer));
+  // g_print ("jitterbuffer = %s\n", G_OBJECT_TYPE_NAME(jitterbuffer));
   GstPad *sinkpad = gst_element_get_static_pad (jitterbuffer, "sink");
 
   gst_pad_add_probe (sinkpad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, sink_pad_probe_cb, NULL, NULL);
@@ -116,19 +115,70 @@ select_stream_cb (GstElement * object,
                   GstElement * manager,
                   gpointer user_data) {
   
-  g_print ("object = %s\n", G_OBJECT_TYPE_NAME(object));
-  g_print ("manager = %s\n", G_OBJECT_TYPE_NAME(manager));
+  // g_print ("object = %s\n", G_OBJECT_TYPE_NAME(object));
+  // g_print ("manager = %s\n", G_OBJECT_TYPE_NAME(manager));
   g_signal_connect(manager, "new-jitterbuffer", G_CALLBACK(get_jitterbuffer), NULL);
+}
+
+GMainContext *video_thread_main_context = NULL;
+GMainLoop *video_thread_main_loop = NULL;
+GThread *video_thread = NULL;
+CustomData data;
+
+static gint
+pipeline_bus_cb (GstBus *bus, GstMessage *msg, gpointer user_data) {
+  /* Parse message */
+  if (msg != NULL) {
+    GError *err;
+    gchar *debug_info;
+
+    switch (GST_MESSAGE_TYPE (msg)) {
+      case GST_MESSAGE_ERROR:
+        gst_message_parse_error (msg, &err, &debug_info);
+        g_printerr ("Error received from element %s: %s\n",
+            GST_OBJECT_NAME (msg->src), err->message);
+        g_printerr ("Debugging information: %s\n",
+            debug_info ? debug_info : "none");
+        g_clear_error (&err);
+        g_free (debug_info);
+        break;
+      case GST_MESSAGE_EOS:
+        g_print ("End-Of-Stream reached.\n");
+        g_main_loop_quit (video_thread_main_loop);
+        break;
+      case GST_MESSAGE_STATE_CHANGED:
+        /* We are only interested in state-changed messages from the pipeline */
+        if (GST_MESSAGE_SRC (msg) == GST_OBJECT (data.pipeline)) {
+          GstState old_state, new_state, pending_state;
+          gst_message_parse_state_changed (msg, &old_state, &new_state,
+              &pending_state);
+          g_message ("Pipeline state changed from %s to %s:\n",
+              gst_element_state_get_name (old_state),
+              gst_element_state_get_name (new_state));
+          char state_name[100];
+          g_snprintf (state_name, 100, "%s", gst_element_state_get_name (new_state));
+          GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(data.pipeline), GST_DEBUG_GRAPH_SHOW_ALL, state_name);
+        }
+        break;
+      default:
+        /* We should not reach here */
+        // g_printerr ("Unexpected message received.\n");
+        break;
+    }
+  }
+
+  return TRUE;
 }
 
 static gpointer
 play_video (gpointer use_data) {
 
-  CustomData data;
   GstBus *bus;
-  GstMessage *msg;
   GstStateChangeReturn ret;
-  gboolean terminate = FALSE;
+
+  video_thread_main_context = g_main_context_new ();
+  video_thread_main_loop = g_main_loop_new (video_thread_main_context, TRUE);
+  g_main_context_unref (video_thread_main_context);
 
   gst_init (NULL, NULL);
 
@@ -180,12 +230,12 @@ play_video (gpointer use_data) {
   }
 
   /* Set the URI to play */
-  g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
-                            "latency", 200, "protocols", 0x04, NULL);
+  // g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
+  //                         "latency", 200, "protocols", 0x04, NULL);
   
 
-  // g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
-  //                           "latency", 200, "protocols", 0x04, NULL); // 家客厅
+  g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
+                            "latency", 200, "protocols", 0x04, NULL); // 家客厅
 
   /* Connect to the pad-added signal */
   /* 在这里把回调函数的src data变量指定参数*/
@@ -199,75 +249,45 @@ play_video (gpointer use_data) {
     gst_object_unref (data.pipeline);
     return NULL;
   }
-
-  /*GstPad* pad = gst_element_get_static_pad (data.convert, "sink");
-  gst_pad_set_event_function(pad,gst_event_callback);*/
   
   /* Listen to the bus */
   bus = gst_element_get_bus (data.pipeline);
-  do {
-    msg = gst_bus_timed_pop_filtered (bus, GST_CLOCK_TIME_NONE,
-        GST_MESSAGE_STATE_CHANGED | GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
+  GSource *source = gst_bus_create_watch (bus);
+  g_source_set_callback (source, G_SOURCE_FUNC(pipeline_bus_cb), &data, NULL);
 
-    /* Parse message */
-    if (msg != NULL) {
-      GError *err;
-      gchar *debug_info;
-
-      switch (GST_MESSAGE_TYPE (msg)) {
-        case GST_MESSAGE_ERROR:
-          gst_message_parse_error (msg, &err, &debug_info);
-          g_printerr ("Error received from element %s: %s\n",
-              GST_OBJECT_NAME (msg->src), err->message);
-          g_printerr ("Debugging information: %s\n",
-              debug_info ? debug_info : "none");
-          g_clear_error (&err);
-          g_free (debug_info);
-          terminate = TRUE;
-          break;
-        case GST_MESSAGE_EOS:
-          g_print ("End-Of-Stream reached.\n");
-          terminate = TRUE;
-          break;
-        case GST_MESSAGE_STATE_CHANGED:
-          /* We are only interested in state-changed messages from the pipeline */
-          if (GST_MESSAGE_SRC (msg) == GST_OBJECT (data.pipeline)) {
-            GstState old_state, new_state, pending_state;
-            gst_message_parse_state_changed (msg, &old_state, &new_state,
-                &pending_state);
-            g_message ("Pipeline state changed from %s to %s:\n",
-                gst_element_state_get_name (old_state),
-                gst_element_state_get_name (new_state));
-            char state_name[100];
-            g_snprintf (state_name, 100, "%s", gst_element_state_get_name (new_state));
-            GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(data.pipeline), GST_DEBUG_GRAPH_SHOW_ALL, state_name);
-          }
-          break;
-        default:
-          /* We should not reach here */
-          g_printerr ("Unexpected message received.\n");
-          break;
-      }
-      gst_message_unref (msg);
-    }
-  } while (!terminate);
+  g_source_attach (source, video_thread_main_context);
+  
+  g_main_loop_run (video_thread_main_loop);
 
   /* Free resources */
   gst_object_unref (bus);
   gst_element_set_state (data.pipeline, GST_STATE_NULL);
   gst_object_unref (data.pipeline);
+  g_main_loop_unref (video_thread_main_loop);
 
   return 0;
 }
 
+static gboolean
+close_request ( GtkWindow* self, gpointer user_data) {
+
+  GstMessage *message = gst_message_new_eos (GST_OBJECT(data.pipeline));
+
+  gst_element_post_message (data.pipeline, message);
+
+  g_thread_join (video_thread);
+
+  return FALSE;
+}
+
+
 static void 
 app_activate (GApplication *app, gpointer *user_data) {
 
-  g_thread_try_new ("gst.play", play_video, NULL, NULL);
-
-  // play_video (NULL);
+  video_thread = g_thread_try_new ("gst.play", play_video, NULL, NULL);
 
   GtkWidget *win = gtk_application_window_new (GTK_APPLICATION (app));
+  g_signal_connect (win, "close-request", G_CALLBACK(close_request), NULL);
 
   gtk_window_set_application (GTK_WINDOW (win), GTK_APPLICATION (app));
 
