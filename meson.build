@@ -69,7 +69,7 @@ shared_library ('vpfeglglessink',
   include_directories: incs,
   dependencies: deps,
   install: true,
-  install_dir: '/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0',
+  install_dir: '/opt/vpf/lib/x86_64-linux-gnu/gstreamer-1.0',
   c_args: ['-Wl,--no-undefined'])
 
 executable ('gtk4test', 'gtk4test.c',
