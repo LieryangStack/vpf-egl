@@ -7,7 +7,7 @@ struct _GtkGstPaintableClass {
 
 struct _GtkGstPaintable {
   GObject parent_instance;
-  GstEglGlesSink *sink;
+  GstVpfEglGlesSink *sink;
   GdkGLContext *context;
 };
 
@@ -87,5 +87,5 @@ gtk_gst_paintable_set_context (GtkGstPaintable *paintable, GdkGLContext* context
 void
 gtk_gst_paintable_set_sink (GtkGstPaintable *paintable, GstElement* sink) {
   
-  paintable->sink = GST_EGLGLESSINK(sink);
+  paintable->sink = GST_VPF_EGLGLESSINK(sink);
 }

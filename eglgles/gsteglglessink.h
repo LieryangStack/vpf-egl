@@ -1,5 +1,5 @@
-#ifndef __GST_EGLGLESSINK_H__
-#define __GST_EGLGLESSINK_H__
+#ifndef __GST_VPFEGLGLESSINK_H__
+#define __GST_VPFEGLGLESSINK_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -15,22 +15,11 @@
 #include "gstegljitter.h"
 
 G_BEGIN_DECLS
-#define GST_TYPE_EGLGLESSINK \
-  (gst_eglglessink_get_type())
-#define GST_EGLGLESSINK(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_EGLGLESSINK,GstEglGlesSink))
-#define GST_EGLGLESSINK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_EGLGLESSINK,GstEglGlesSinkClass))
-#define GST_IS_EGLGLESSINK(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_EGLGLESSINK))
-#define GST_IS_EGLGLESSINK_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_EGLGLESSINK))
 
-typedef struct _GstEglGlesSink GstEglGlesSink;
-typedef struct _GstEglGlesSinkClass GstEglGlesSinkClass;
+#define GST_TYPE_VPF_EGLGLESSINK gst_vpf_eglglessink_get_type()
+G_DECLARE_FINAL_TYPE (GstVpfEglGlesSink, gst_vpf_eglglessink, GST, VPF_EGLGLESSINK, GstVideoSink);
 
-
-struct _GstEglGlesSink
+struct _GstVpfEglGlesSink 
 {
   GstVideoSink videosink;       /* Element hook */
 
@@ -70,14 +59,8 @@ struct _GstEglGlesSink
   GdkPaintable *paintable;
 };
 
-struct _GstEglGlesSinkClass
-{
-  GstVideoSinkClass parent_class;
-};
 
 extern GdkTexture *dmabuf_texture;
-
-GType gst_eglglessink_get_type (void);
 
 G_END_DECLS
 #endif /* __GST_EGLGLESSINK_H__ */

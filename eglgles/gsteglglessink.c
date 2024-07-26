@@ -26,8 +26,8 @@ GdkTexture *dmabuf_texture = NULL;
 #endif
 
 
-GST_DEBUG_CATEGORY_STATIC (gst_eglglessink_debug);
-#define GST_CAT_DEFAULT gst_eglglessink_debug
+GST_DEBUG_CATEGORY_STATIC (gst_vpf_eglglessink_debug);
+#define GST_CAT_DEFAULT gst_vpf_eglglessink_debug
 #ifdef IS_DESKTOP
 #define DEFAULT_GPU_ID 0
 #endif
@@ -35,7 +35,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_eglglessink_debug);
 GST_DEBUG_CATEGORY_EXTERN (GST_CAT_PERFORMANCE);
 
 /* Input capabilities. */
-static GstStaticPadTemplate gst_eglglessink_sink_template_factory =
+static GstStaticPadTemplate gst_vpf_eglglessink_sink_template_factory =
     GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
@@ -64,56 +64,65 @@ enum
 #endif
 };
 
+/* 定义了继承于 GstVideoSink 的 GstVpfEglGlesSink 对象  */
+#define parent_class gst_vpf_eglglessink_parent_class
+G_DEFINE_TYPE (GstVpfEglGlesSink, gst_vpf_eglglessink, GST_TYPE_VIDEO_SINK);
+
+
+/**
+ * @param e: 元素的名称（小写）, 需要跟注册元素的时候 GST_ELEMENT_REGISTER 的第一个参数相同
+ * @param e_n: 元素的名称，用于元素创建 gst_element_factory_make 函数中使用
+ * @param r: 元素的等级
+ * @param t: Gtype类型系统中已经被注册的类型
+ */
+GST_ELEMENT_REGISTER_DEFINE (vpfeglglessink, "vpfeglglessink", GST_RANK_NONE,
+    GST_TYPE_VPF_EGLGLESSINK);
+
+
 static void 
-gst_eglglessink_finalize (GObject * object);
+gst_vpf_eglglessink_finalize (GObject * object);
 static void 
-gst_eglglessink_get_property (GObject * object, guint prop_id, GValue * value, GParamSpec * pspec);
+gst_vpf_eglglessink_get_property (GObject * object, guint prop_id, GValue * value, GParamSpec * pspec);
 static void 
-gst_eglglessink_set_property (GObject * object, guint prop_id, const GValue * value, GParamSpec * pspec);
+gst_vpf_eglglessink_set_property (GObject * object, guint prop_id, const GValue * value, GParamSpec * pspec);
 static GstStateChangeReturn 
-gst_eglglessink_change_state (GstElement * element, GstStateChange transition);
+gst_vpf_eglglessink_change_state (GstElement * element, GstStateChange transition);
 static GstFlowReturn 
-gst_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf);
+gst_vpf_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf);
 static GstFlowReturn 
-gst_eglglessink_show_frame (GstVideoSink * vsink, GstBuffer * buf);
+gst_vpf_eglglessink_show_frame (GstVideoSink * vsink, GstBuffer * buf);
 static gboolean 
-gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps);
+gst_vpf_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps);
 static GstCaps 
-*gst_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter);
+*gst_vpf_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter);
 static gboolean 
-gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
+gst_vpf_eglglessink_query (GstBaseSink * bsink, GstQuery * query);
 
 
 /* Utility */
 static gboolean
-gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps);
+gst_vpf_eglglessink_configure_caps (GstVpfEglGlesSink * eglglessink, GstCaps * caps);
 static gboolean
-gst_eglglessink_cuda_init(GstEglGlesSink * eglglessink);
+gst_vpf_eglglessink_cuda_init(GstVpfEglGlesSink * eglglessink);
 static void
-gst_eglglessink_cuda_cleanup(GstEglGlesSink * eglglessink);
+gst_vpf_eglglessink_cuda_cleanup(GstVpfEglGlesSink * eglglessink);
 static gboolean
-gst_eglglessink_cuda_buffer_copy(GstEglGlesSink * eglglessink, GstBuffer * buf);
+gst_vpf_eglglessink_cuda_buffer_copy(GstVpfEglGlesSink * eglglessink, GstBuffer * buf);
 static GstFlowReturn 
-gst_eglglessink_upload (GstEglGlesSink * sink, GstBuffer * buf);
+gst_vpf_eglglessink_upload (GstVpfEglGlesSink * sink, GstBuffer * buf);
 static GstFlowReturn 
-gst_eglglessink_render (GstEglGlesSink * sink);
+gst_vpf_eglglessink_render (GstVpfEglGlesSink * sink);
 static GstFlowReturn 
-gst_eglglessink_queue_object (GstEglGlesSink * sink, GstMiniObject * obj);
+gst_vpf_eglglessink_queue_object (GstVpfEglGlesSink * sink, GstMiniObject * obj);
 static inline gboolean 
-egl_init (GstEglGlesSink * eglglessink);
-
-
-/* 定义了继承于 GstVideoSink 的 GstEglGlesSink 对象  */
-#define parent_class gst_eglglessink_parent_class
-G_DEFINE_TYPE (GstEglGlesSink, gst_eglglessink, GST_TYPE_VIDEO_SINK);
-
+egl_init (GstVpfEglGlesSink * eglglessink);
 
 /**
  * @brief: 1. 检查gtk是否初始化
  *         2. 设定EGLDisplay变量给GstEGLDisplay结构体
  */
 static inline gboolean
-egl_init (GstEglGlesSink * eglglessink) {
+egl_init (GstVpfEglGlesSink * eglglessink) {
 
   GstCaps *caps;
   GError *error = NULL;
@@ -178,7 +187,7 @@ HANDLE_ERROR:
 static gboolean
 gtk_gst_paintable_set_texture_invoke (gpointer data)
 {
-  GstEglGlesSink * eglglessink = GST_EGLGLESSINK(data);
+  GstVpfEglGlesSink * eglglessink = GST_VPF_EGLGLESSINK(data);
 
   gdk_paintable_invalidate_contents (eglglessink->paintable);
 
@@ -190,7 +199,7 @@ gtk_gst_paintable_set_texture_invoke (gpointer data)
  * @brief: 处理 GstBuffer，然后进行渲染
 */
 static gpointer
-render_thread_func (GstEglGlesSink * eglglessink) {
+render_thread_func (GstVpfEglGlesSink * eglglessink) {
 
   GstMessage *message;
   GValue val = { 0 };
@@ -230,7 +239,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
       GstCaps *caps = GST_CAPS_CAST (object);
 
       if (caps != eglglessink->configured_caps) {
-        if (!gst_eglglessink_configure_caps (eglglessink, caps)) {
+        if (!gst_vpf_eglglessink_configure_caps (eglglessink, caps)) {
           last_flow = GST_FLOW_NOT_NEGOTIATED;
         }
       }
@@ -238,14 +247,14 @@ render_thread_func (GstEglGlesSink * eglglessink) {
       GstBuffer *buf = GST_BUFFER_CAST (item->object);
 
       if (eglglessink->configured_caps) {
-        last_flow = gst_eglglessink_upload (eglglessink, buf); /* 将GPU内部的纹理更新到我们创建的纹理 eglglessink->egl_context->texture[0] */
+        last_flow = gst_vpf_eglglessink_upload (eglglessink, buf); /* 将GPU内部的纹理更新到我们创建的纹理 eglglessink->egl_context->texture[0] */
         if (last_flow == GST_FLOW_OK)
-            gdk_paintable_invalidate_contents (eglglessink->paintable);
-              // g_main_context_invoke_full (NULL,
-              //                 G_PRIORITY_DEFAULT,
-              //                 gtk_gst_paintable_set_texture_invoke,
-              //                 eglglessink, NULL);
-          // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
+            // gdk_paintable_invalidate_contents (eglglessink->paintable);
+              g_main_context_invoke_full (NULL,
+                              G_PRIORITY_DEFAULT,
+                              gtk_gst_paintable_set_texture_invoke,
+                              eglglessink, NULL);
+            // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
       } else {
         last_flow = GST_FLOW_OK;
         GST_DEBUG_OBJECT (eglglessink,
@@ -254,7 +263,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
     } else if (!object) {  /* 如果是 object == NULL */
       if (eglglessink->configured_caps) {
         
-        last_flow = gst_eglglessink_render (eglglessink);  /* 绘制OpenGL ES顶点 */
+        last_flow = gst_vpf_eglglessink_render (eglglessink);  /* 绘制OpenGL ES顶点 */
 
       } else {
         last_flow = GST_FLOW_OK;
@@ -295,7 +304,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
   g_mutex_unlock (&eglglessink->render_lock);
 
   if (eglglessink->using_cuda) {
-    gst_eglglessink_cuda_cleanup(eglglessink);
+    gst_vpf_eglglessink_cuda_cleanup(eglglessink);
   }
 
   if (eglglessink->configured_caps) {
@@ -320,7 +329,7 @@ render_thread_func (GstEglGlesSink * eglglessink) {
  * @note: 该函数会启用一个线程，渲染线程
 */
 static gboolean
-gst_eglglessink_start (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_start (GstVpfEglGlesSink * eglglessink)
 {
   GError *error = NULL;
   cudaError_t CUerr = cudaSuccess;
@@ -381,9 +390,9 @@ HANDLE_ERROR:
 
 
 static gboolean
-gst_eglglessink_stop (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_stop (GstVpfEglGlesSink * eglglessink)
 {
-  g_print ("gst_eglglessink_stop (GstEglGlesSink * eglglessink)\n");
+  g_print ("gst_vpf_eglglessink_stop (GstVpfEglGlesSink * eglglessink)\n");
   GST_DEBUG_OBJECT (eglglessink, "Stopping");
 
   gst_data_queue_set_flushing (eglglessink->queue, TRUE);
@@ -419,7 +428,7 @@ queue_item_destroy (GstDataQueueItem * item)
  *       分析： obj = NULL 的情况
 */
 static GstFlowReturn
-gst_eglglessink_queue_object (GstEglGlesSink * eglglessink, GstMiniObject * obj)
+gst_vpf_eglglessink_queue_object (GstVpfEglGlesSink * eglglessink, GstMiniObject * obj)
 {
   GstDataQueueItem *item;
   GstFlowReturn last_flow;
@@ -476,7 +485,7 @@ gst_eglglessink_queue_object (GstEglGlesSink * eglglessink, GstMiniObject * obj)
 
 
 static gboolean
-gst_eglglessink_cuda_buffer_copy (GstEglGlesSink * eglglessink, GstBuffer * buf) {
+gst_vpf_eglglessink_cuda_buffer_copy (GstVpfEglGlesSink * eglglessink, GstBuffer * buf) {
 
   CUarray dpArray;
   CUresult result;
@@ -612,7 +621,7 @@ HANDLE_ERROR:
 
 /* 更新纹理*/
 static GstFlowReturn
-gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
+gst_vpf_eglglessink_upload (GstVpfEglGlesSink * eglglessink, GstBuffer * buf) {
 
   if (!buf) {
     GST_DEBUG_OBJECT (eglglessink, "Rendering previous buffer again");
@@ -667,7 +676,7 @@ gst_eglglessink_upload (GstEglGlesSink * eglglessink, GstBuffer * buf) {
 
       gst_memory_unmap (mem, &map);
     } else if (eglglessink->using_cuda) {  /* dGPU CUDA 更新纹理 */
-      if (!gst_eglglessink_cuda_buffer_copy(eglglessink, buf)) {
+      if (!gst_vpf_eglglessink_cuda_buffer_copy(eglglessink, buf)) {
         goto HANDLE_ERROR;
       }
     } else {
@@ -689,7 +698,7 @@ HANDLE_ERROR:
  * @brief: gl顶点相关，绘制
 */
 static GstFlowReturn
-gst_eglglessink_render (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_render (GstVpfEglGlesSink * eglglessink)
 {
   if (eglglessink->profile)
     GstEglJitterToolAddPoint(eglglessink->pDeliveryJitter);
@@ -703,16 +712,16 @@ gst_eglglessink_render (GstEglGlesSink * eglglessink)
  * @note: 这个函数会在 GstBaseSink 的chain函数中调用
 */
 static GstFlowReturn
-gst_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf)
+gst_vpf_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
 
   g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
 
-  eglglessink = GST_EGLGLESSINK (bsink);
+  eglglessink = GST_VPF_EGLGLESSINK (bsink);
   GST_DEBUG_OBJECT (eglglessink, "Got buffer: %p", buf);
 
-  return gst_eglglessink_queue_object (eglglessink, GST_MINI_OBJECT_CAST (buf));
+  return gst_vpf_eglglessink_queue_object (eglglessink, GST_MINI_OBJECT_CAST (buf));
 }
 
 
@@ -721,25 +730,25 @@ gst_eglglessink_prepare (GstBaseSink * bsink, GstBuffer * buf)
  *         push了一个空的GstMiniObject让渲染线程去处理
 */
 static GstFlowReturn
-gst_eglglessink_show_frame (GstVideoSink * vsink, GstBuffer * buf)
+gst_vpf_eglglessink_show_frame (GstVideoSink * vsink, GstBuffer * buf)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
 
   g_return_val_if_fail (buf != NULL, GST_FLOW_ERROR);
 
-  eglglessink = GST_EGLGLESSINK (vsink);
+  eglglessink = GST_VPF_EGLGLESSINK (vsink);
   GST_DEBUG_OBJECT (eglglessink, "Got buffer: %p", buf);
 
-  return gst_eglglessink_queue_object (eglglessink, NULL);
+  return gst_vpf_eglglessink_queue_object (eglglessink, NULL);
 }
 
 static GstCaps *
-gst_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter)
+gst_vpf_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
   GstCaps *ret = NULL;
 
-  eglglessink = GST_EGLGLESSINK (bsink);
+  eglglessink = GST_VPF_EGLGLESSINK (bsink);
 
   GST_OBJECT_LOCK (eglglessink);
   if (eglglessink->sinkcaps) {
@@ -763,11 +772,11 @@ gst_eglglessink_getcaps (GstBaseSink * bsink, GstCaps * filter)
 }
 
 static gboolean
-gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
+gst_vpf_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
 {
   switch (GST_QUERY_TYPE (query)) {
     default:
-      return GST_BASE_SINK_CLASS (gst_eglglessink_parent_class)->query (bsink,
+      return GST_BASE_SINK_CLASS (gst_vpf_eglglessink_parent_class)->query (bsink,
           query);
       break;
   }
@@ -778,7 +787,7 @@ gst_eglglessink_query (GstBaseSink * bsink, GstQuery * query)
  * @brief: 在调用GStCaps配置函数的时候，会调用该CUDA初始化函数。
 */
 static gboolean
-gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
+gst_vpf_eglglessink_cuda_init (GstVpfEglGlesSink * eglglessink) {
 
   CUcontext pctx;
   CUresult result;
@@ -840,7 +849,7 @@ gst_eglglessink_cuda_init (GstEglGlesSink * eglglessink) {
 }
 
 static void
-gst_eglglessink_cuda_cleanup (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_cuda_cleanup (GstVpfEglGlesSink * eglglessink)
 {
   CUresult result;
   guint i;
@@ -864,7 +873,7 @@ gst_eglglessink_cuda_cleanup (GstEglGlesSink * eglglessink)
  * 
 */
 static gboolean
-gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
+gst_vpf_eglglessink_configure_caps (GstVpfEglGlesSink * eglglessink, GstCaps * caps)
 {
   gboolean ret = TRUE;
   GstVideoInfo info;
@@ -893,7 +902,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
 
     /* EGL/GLES cleanup */
     if (eglglessink->using_cuda) {
-      gst_eglglessink_cuda_cleanup(eglglessink);
+      gst_vpf_eglglessink_cuda_cleanup(eglglessink);
     }
     // gst_egl_adaptation_cleanup (eglglessink->egl_context);
     gst_caps_unref (eglglessink->configured_caps);
@@ -909,7 +918,7 @@ gst_eglglessink_configure_caps (GstEglGlesSink * eglglessink, GstCaps * caps)
 
   /* gl纹理创建CUDA访问句柄 */
   if (eglglessink->using_cuda) {
-    if (!gst_eglglessink_cuda_init(eglglessink)) {
+    if (!gst_vpf_eglglessink_cuda_init(eglglessink)) {
        GST_ERROR_OBJECT (eglglessink, "Cuda Init failed");
        goto HANDLE_ERROR;
     }
@@ -928,13 +937,13 @@ HANDLE_ERROR:
  * @brief: 设定sink pad的caps
  */
 static gboolean
-gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
+gst_vpf_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
 
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
   GstVideoInfo info;
   GstCapsFeatures *features;
 
-  eglglessink = GST_EGLGLESSINK (bsink);
+  eglglessink = GST_VPF_EGLGLESSINK (bsink);
 
   GST_DEBUG_OBJECT (eglglessink,
       "Current caps %" GST_PTR_FORMAT ", setting caps %"
@@ -949,7 +958,7 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
 #endif
   }
 
-  if (gst_eglglessink_queue_object (eglglessink,
+  if (gst_vpf_eglglessink_queue_object (eglglessink,
           GST_MINI_OBJECT_CAST (caps)) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (eglglessink, "Failed to configure caps");
     return FALSE;
@@ -971,7 +980,7 @@ gst_eglglessink_setcaps (GstBaseSink * bsink, GstCaps * caps) {
  *         
 */
 static gboolean
-gst_eglglessink_open (GstEglGlesSink * eglglessink) {
+gst_vpf_eglglessink_open (GstVpfEglGlesSink * eglglessink) {
 
   if (!egl_init (eglglessink)) {
     return FALSE;
@@ -989,7 +998,7 @@ gst_eglglessink_open (GstEglGlesSink * eglglessink) {
  * @brief: 当元素@eglglessink 从 READY_TO_NULL 状态的时候会调用该函数
 */
 static gboolean
-gst_eglglessink_close (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_close (GstVpfEglGlesSink * eglglessink)
 {
   double fJitterAvg = 0, fJitterStd = 0, fJitterHighest = 0;
 
@@ -1026,22 +1035,22 @@ gst_eglglessink_close (GstEglGlesSink * eglglessink)
 }
 
 static GstStateChangeReturn
-gst_eglglessink_change_state (GstElement * element, GstStateChange transition)
+gst_vpf_eglglessink_change_state (GstElement * element, GstStateChange transition)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
 
-  eglglessink = GST_EGLGLESSINK (element);
+  eglglessink = GST_VPF_EGLGLESSINK (element);
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
-      if (!gst_eglglessink_open (eglglessink)) {
+      if (!gst_vpf_eglglessink_open (eglglessink)) {
         ret = GST_STATE_CHANGE_FAILURE;
         goto done;
       }
       break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
-      if (!gst_eglglessink_start (eglglessink)) {
+      if (!gst_vpf_eglglessink_start (eglglessink)) {
         ret = GST_STATE_CHANGE_FAILURE;
         goto done;
       }
@@ -1056,13 +1065,13 @@ gst_eglglessink_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_NULL:
-      if (!gst_eglglessink_close (eglglessink)) {
+      if (!gst_vpf_eglglessink_close (eglglessink)) {
         ret = GST_STATE_CHANGE_FAILURE;
         goto done;
       }
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      if (!gst_eglglessink_stop (eglglessink)) {
+      if (!gst_vpf_eglglessink_stop (eglglessink)) {
         ret = GST_STATE_CHANGE_FAILURE;
         goto done;
       }
@@ -1076,13 +1085,13 @@ done:
 }
 
 static void
-gst_eglglessink_finalize (GObject * object)
+gst_vpf_eglglessink_finalize (GObject * object)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
 
-  g_return_if_fail (GST_IS_EGLGLESSINK (object));
+  g_return_if_fail (GST_IS_VPF_EGLGLESSINK (object));
 
-  eglglessink = GST_EGLGLESSINK (object);
+  eglglessink = GST_VPF_EGLGLESSINK (object);
 
   if (eglglessink->queue)
     g_object_unref (eglglessink->queue);
@@ -1098,14 +1107,14 @@ gst_eglglessink_finalize (GObject * object)
 }
 
 static void
-gst_eglglessink_set_property (GObject * object, guint prop_id,
+gst_vpf_eglglessink_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
 
-  g_return_if_fail (GST_IS_EGLGLESSINK (object));
+  g_return_if_fail (GST_IS_VPF_EGLGLESSINK (object));
 
-  eglglessink = GST_EGLGLESSINK (object);
+  eglglessink = GST_VPF_EGLGLESSINK (object);
 
   switch (prop_id) {
     case PROP_PROFILE:
@@ -1126,14 +1135,14 @@ gst_eglglessink_set_property (GObject * object, guint prop_id,
 }
 
 static void
-gst_eglglessink_get_property (GObject * object, guint prop_id,
+gst_vpf_eglglessink_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstEglGlesSink *eglglessink;
+  GstVpfEglGlesSink *eglglessink;
 
-  g_return_if_fail (GST_IS_EGLGLESSINK (object));
+  g_return_if_fail (GST_IS_VPF_EGLGLESSINK (object));
 
-  eglglessink = GST_EGLGLESSINK (object);
+  eglglessink = GST_VPF_EGLGLESSINK (object);
 
   switch (prop_id) {
     case PROP_PROFILE:
@@ -1156,7 +1165,7 @@ gst_eglglessink_get_property (GObject * object, guint prop_id,
 
 
 static void
-gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
+gst_vpf_eglglessink_class_init (GstVpfEglGlesSinkClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
@@ -1168,24 +1177,24 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
   gstbasesink_class = (GstBaseSinkClass *) klass;
   gstvideosink_class = (GstVideoSinkClass *) klass;
 
-  gobject_class->set_property = gst_eglglessink_set_property;
-  gobject_class->get_property = gst_eglglessink_get_property;
-  gobject_class->finalize = gst_eglglessink_finalize;
+  gobject_class->set_property = gst_vpf_eglglessink_set_property;
+  gobject_class->get_property = gst_vpf_eglglessink_get_property;
+  gobject_class->finalize = gst_vpf_eglglessink_finalize;
 
-  gstelement_class->change_state = gst_eglglessink_change_state;
+  gstelement_class->change_state = gst_vpf_eglglessink_change_state;
 
-  gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_setcaps); /* 设定sink pad的caps */
-  gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_eglglessink_getcaps); /* 得到sink pad支持的cpas */
-  gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_eglglessink_prepare);  /* 显示帧先调用该函数 */
-  gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_eglglessink_query);
+  gstbasesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_vpf_eglglessink_setcaps); /* 设定sink pad的caps */
+  gstbasesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_vpf_eglglessink_getcaps); /* 得到sink pad支持的cpas */
+  gstbasesink_class->prepare = GST_DEBUG_FUNCPTR (gst_vpf_eglglessink_prepare);  /* 显示帧先调用该函数 */
+  gstbasesink_class->query = GST_DEBUG_FUNCPTR (gst_vpf_eglglessink_query);
 
-  gstvideosink_class->show_frame = GST_DEBUG_FUNCPTR (gst_eglglessink_show_frame); /* 显示帧再调用该函数 */
+  gstvideosink_class->show_frame = GST_DEBUG_FUNCPTR (gst_vpf_eglglessink_show_frame); /* 显示帧再调用该函数 */
 
  
   g_object_class_install_property (gobject_class, PROP_PROFILE,
       g_param_spec_uint ("profile",
           "profile",
-          "gsteglglessink jitter information", 0, G_MAXUINT, 0,
+          "GstVpfEglGlesSink jitter information", 0, G_MAXUINT, 0,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #ifdef IS_DESKTOP
   g_object_class_install_property (gobject_class, PROP_GPU_DEVICE_ID,
@@ -1217,7 +1226,7 @@ gst_eglglessink_class_init (GstEglGlesSinkClass * klass)
       "Sebastian Dröge <sebastian.droege@collabora.co.uk>");
 
   gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_eglglessink_sink_template_factory));
+      gst_static_pad_template_get (&gst_vpf_eglglessink_sink_template_factory));
 }
 
 static gboolean
@@ -1228,7 +1237,7 @@ queue_check_full_func (GstDataQueue * queue, guint visible, guint bytes,
 }
 
 static void
-gst_eglglessink_init (GstEglGlesSink * eglglessink)
+gst_vpf_eglglessink_init (GstVpfEglGlesSink * eglglessink)
 {
   eglglessink->egl_context =
       gst_egl_adaptation_context_new (GST_ELEMENT_CAST (eglglessink));
@@ -1264,18 +1273,31 @@ gst_eglglessink_init (GstEglGlesSink * eglglessink)
 static gboolean
 vpfeglglessink_plugin_init (GstPlugin * plugin) {
   /* debug category for fltering log messages */
-  GST_DEBUG_CATEGORY_INIT (gst_eglglessink_debug, "nveglglessink",
+  GST_DEBUG_CATEGORY_INIT (gst_vpf_eglglessink_debug, "nveglglessink",
       0, "Simple EGL/GLES Sink");
 
   gst_egl_adaption_init ();
 
-  return gst_element_register (plugin, "vpfeglglessink", GST_RANK_SECONDARY,
-      GST_TYPE_EGLGLESSINK);
+  /**
+   * @param element: 元素的名称，需要跟 GST_ELEMENT_REGISTER_DEFINE 的第一个参数相同
+   * @param plugin: 插件对象的地址
+   */
+  return GST_ELEMENT_REGISTER (vpfeglglessink, plugin);
 }
 
+
 /**
- * gstreamer 寻找此结构以注册 eglglessinks
-*/
+ * @brief: 在GStreamer系统中注册一个插件
+ * @param major: 插件的主版本号
+ * @param minor: 插件的次版本号
+ * @param name: 插件的名称，gst-inspect-1.0 可以使用@name 搜索到该插件(库名称是该lib + name，否则搜不到)
+ * @param description: 该插件的相关描述
+ * @param init: 插件的初始化函数
+ * @param version: 插件的版本号
+ * @param license: 插件的许可证
+ * @param package: 插件包所在的包名
+ * @param orign: 插件的来源
+ */
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     vpfeglglessink,

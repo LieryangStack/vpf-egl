@@ -2,7 +2,6 @@
 #include <gst/gst.h>
 #include <gst/rtsp/gstrtspmessage.h>
 
-GdkPaintable *picture_paintable = NULL;
 GtkWidget *picture = NULL;
 
 static void
@@ -256,6 +255,7 @@ play_video (gpointer use_data) {
   g_source_set_callback (source, G_SOURCE_FUNC(pipeline_bus_cb), &data, NULL);
 
   g_source_attach (source, video_thread_main_context);
+  g_source_unref (source);
   
   g_main_loop_run (video_thread_main_loop);
 
