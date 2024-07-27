@@ -176,6 +176,8 @@ HANDLE_ERROR:
 static gboolean
 gtk_gst_paintable_set_texture_invoke (gpointer data)
 {
+  g_return_val_if_fail (GST_IS_VPF_EGLGLESSINK(data), FALSE);
+
   GstVpfEglGlesSink * eglglessink = GST_VPF_EGLGLESSINK(data);
 
   gdk_paintable_invalidate_contents (eglglessink->paintable);
@@ -238,11 +240,11 @@ render_thread_func (GstVpfEglGlesSink * eglglessink) {
       if (eglglessink->configured_caps) {
         last_flow = gst_vpf_eglglessink_upload (eglglessink, buf); /* 将GPU内部的纹理更新到我们创建的纹理 eglglessink->egl_context->texture[0] */
         if (last_flow == GST_FLOW_OK)
-            // gdk_paintable_invalidate_contents (eglglessink->paintable);
-              g_main_context_invoke_full (NULL,
-                              G_PRIORITY_DEFAULT,
-                              gtk_gst_paintable_set_texture_invoke,
-                              eglglessink, NULL);
+            gdk_paintable_invalidate_contents (eglglessink->paintable);
+              // g_main_context_invoke_full (NULL,
+              //                 G_PRIORITY_DEFAULT,
+              //                 gtk_gst_paintable_set_texture_invoke,
+              //                 eglglessink, NULL);
             // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
       } else {
         last_flow = GST_FLOW_OK;
@@ -381,7 +383,6 @@ HANDLE_ERROR:
 static gboolean
 gst_vpf_eglglessink_stop (GstVpfEglGlesSink * eglglessink)
 {
-  g_print ("gst_vpf_eglglessink_stop (GstVpfEglGlesSink * eglglessink)\n");
   GST_DEBUG_OBJECT (eglglessink, "Stopping");
 
   gst_data_queue_set_flushing (eglglessink->queue, TRUE);

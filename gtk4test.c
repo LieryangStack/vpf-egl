@@ -43,11 +43,11 @@ pad_added_handler (GstElement * src, GstPad * new_pad, CustomData * data)
 
   sink_pad = gst_element_get_static_pad (data->h264depay, "sink");
 
-  guint size = gst_caps_get_size (new_pad_caps);
-  g_print ("size = %d\n", size);
+  // guint size = gst_caps_get_size (new_pad_caps);
+  // g_print ("size = %d\n", size);
   GstStructure *structure = gst_caps_get_structure (new_pad_caps, 0);
-  gchar *str = gst_structure_to_string (structure);
-  g_print ("str = %s\n", str);
+  // gchar *str = gst_structure_to_string (structure);
+  // g_print ("str = %s\n", str);
   const gchar *media_str = gst_structure_get_string (structure, "media");
 
   if (g_strcmp0("video", media_str))
@@ -82,7 +82,7 @@ sink_pad_probe_cb   (GstPad *pad,
                       
   GstEvent *event = gst_pad_probe_info_get_event (info);
 
-  g_print ("name = %s\n", GST_EVENT_TYPE_NAME(event));
+  // g_print ("name = %s\n", GST_EVENT_TYPE_NAME(event));
 
   if (GST_EVENT_TYPE (event) == GST_EVENT_CAPS) {
      GstCaps *caps;
@@ -229,12 +229,11 @@ play_video (gpointer use_data) {
   }
 
   /* Set the URI to play */
-  g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
-                          "latency", 200, "protocols", 0x04, NULL);
+  // g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
+  //                         "latency", 200, "protocols", 0x04, NULL);
   
-
-  // g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
-  //                           "latency", 200, "protocols", 0x04, NULL); // 家客厅
+  g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
+                            "latency", 200, "protocols", 0x04, NULL); // 家客厅
 
   /* Connect to the pad-added signal */
   /* 在这里把回调函数的src data变量指定参数*/
@@ -271,9 +270,11 @@ play_video (gpointer use_data) {
 static gboolean
 close_request ( GtkWindow* self, gpointer user_data) {
 
-  GstMessage *message = gst_message_new_eos (GST_OBJECT(data.pipeline));
+  /* 先取消渲染paintable，防止刷新主线程在关闭窗口前刷新 */
+  gtk_picture_set_paintable (GTK_PICTURE(user_data), NULL);
 
-  gst_element_post_message (data.pipeline, message);
+  GstEvent *event = gst_event_new_eos ();
+  gst_element_send_event (data.pipeline, event);
 
   g_thread_join (video_thread);
 
@@ -287,7 +288,6 @@ app_activate (GApplication *app, gpointer *user_data) {
   video_thread = g_thread_try_new ("gst.play", play_video, NULL, NULL);
 
   GtkWidget *win = gtk_application_window_new (GTK_APPLICATION (app));
-  g_signal_connect (win, "close-request", G_CALLBACK(close_request), NULL);
 
   gtk_window_set_application (GTK_WINDOW (win), GTK_APPLICATION (app));
 
@@ -309,6 +309,8 @@ app_activate (GApplication *app, gpointer *user_data) {
   // gtk_box_append (GTK_BOX(box), button);
 
   gtk_window_set_child (GTK_WINDOW(win), GTK_WIDGET(box));
+
+  g_signal_connect (win, "close-request", G_CALLBACK(close_request), picture);
 
   // gtk_widget_set_opacity (win, 0.75);
 
