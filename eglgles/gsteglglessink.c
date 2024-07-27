@@ -68,17 +68,6 @@ enum
 #define parent_class gst_vpf_eglglessink_parent_class
 G_DEFINE_TYPE (GstVpfEglGlesSink, gst_vpf_eglglessink, GST_TYPE_VIDEO_SINK);
 
-
-/**
- * @param e: 元素的名称（小写）, 需要跟注册元素的时候 GST_ELEMENT_REGISTER 的第一个参数相同
- * @param e_n: 元素的名称，用于元素创建 gst_element_factory_make 函数中使用
- * @param r: 元素的等级
- * @param t: Gtype类型系统中已经被注册的类型
- */
-GST_ELEMENT_REGISTER_DEFINE (vpfeglglessink, "vpfeglglessink", GST_RANK_NONE,
-    GST_TYPE_VPF_EGLGLESSINK);
-
-
 static void 
 gst_vpf_eglglessink_finalize (GObject * object);
 static void 
@@ -1272,7 +1261,7 @@ gst_vpf_eglglessink_init (GstVpfEglGlesSink * eglglessink)
 static gboolean
 vpfeglglessink_plugin_init (GstPlugin * plugin) {
   /* debug category for fltering log messages */
-  GST_DEBUG_CATEGORY_INIT (gst_vpf_eglglessink_debug, "nveglglessink",
+  GST_DEBUG_CATEGORY_INIT (gst_vpf_eglglessink_debug, "vpfeglglessink",
       0, "Simple EGL/GLES Sink");
 
   gst_egl_adaption_init ();
@@ -1281,7 +1270,8 @@ vpfeglglessink_plugin_init (GstPlugin * plugin) {
    * @param element: 元素的名称，需要跟 GST_ELEMENT_REGISTER_DEFINE 的第一个参数相同
    * @param plugin: 插件对象的地址
    */
-  return GST_ELEMENT_REGISTER (vpfeglglessink, plugin);
+  return gst_element_register (plugin, "vpfeglglessink", GST_RANK_SECONDARY,
+      GST_TYPE_VPF_EGLGLESSINK);
 }
 
 
