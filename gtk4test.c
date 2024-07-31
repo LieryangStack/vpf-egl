@@ -228,12 +228,12 @@ play_video (gpointer use_data) {
     return NULL;
   }
 
-  /* Set the URI to play */
-  // g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
-  //                         "latency", 200, "protocols", 0x04, NULL);
+  /* 延迟设小了会卡，跟nvv4l2decoder有关 */
+  g_object_set(data.source, "location", "rtsp://admin:YEERBA@192.168.10.11:554/Streaming/Channels/101", \
+                          "latency", 300, "protocols", 0x04, NULL);
   
-  g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
-                            "latency", 200, "protocols", 0x04, NULL); // 家客厅
+  // g_object_set(data.source, "location", "rtsp://admin:LHLQLW@192.168.10.199:554/Streaming/Channels/101", 
+  //                           "latency", 200, "protocols", 0x04, NULL); // 家客厅
 
   /* Connect to the pad-added signal */
   /* 在这里把回调函数的src data变量指定参数*/
