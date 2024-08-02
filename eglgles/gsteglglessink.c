@@ -128,6 +128,7 @@ egl_init (GstVpfEglGlesSink * eglglessink) {
 
   /* 创建 paintable */
   eglglessink->paintable = gtk_gst_paintable_new ();
+  g_object_ref (eglglessink->paintable);
   gtk_gst_paintable_set_context (GTK_GST_PAINTABLE(eglglessink->paintable), context);
   gtk_gst_paintable_set_sink (GTK_GST_PAINTABLE(eglglessink->paintable), GST_ELEMENT(eglglessink));
 
@@ -173,14 +174,18 @@ HANDLE_ERROR:
 }
 
 
+/**
+ * @brief: 默认主上下文会迭代过程中会调用该函数
+ */
 static gboolean
-gtk_gst_paintable_set_texture_invoke (gpointer data)
-{
-  g_return_val_if_fail (GST_IS_VPF_EGLGLESSINK(data), FALSE);
+gtk_gst_paintable_set_texture_invoke (gpointer data) {
 
-  GstVpfEglGlesSink * eglglessink = GST_VPF_EGLGLESSINK(data);
+  g_return_val_if_fail (data, FALSE);
+  g_return_val_if_fail (GDK_IS_PAINTABLE(data), FALSE);
 
-  gdk_paintable_invalidate_contents (eglglessink->paintable);
+  GdkPaintable * paintable = GDK_PAINTABLE(data);
+
+  gdk_paintable_invalidate_contents (paintable);
 
   return G_SOURCE_REMOVE;
 }
@@ -244,7 +249,7 @@ render_thread_func (GstVpfEglGlesSink * eglglessink) {
             g_main_context_invoke_full (NULL,
                               G_PRIORITY_HIGH,
                               gtk_gst_paintable_set_texture_invoke,
-                              eglglessink, NULL);
+                              eglglessink->paintable, NULL);
             // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
       } else {
         last_flow = GST_FLOW_OK;
@@ -992,6 +997,9 @@ gst_vpf_eglglessink_close (GstVpfEglGlesSink * eglglessink)
 {
   double fJitterAvg = 0, fJitterStd = 0, fJitterHighest = 0;
 
+  if(eglglessink->paintable)
+    g_clear_object (&eglglessink->paintable);
+
   g_mutex_lock (&eglglessink->render_lock);
   eglglessink->is_closing = TRUE;
   g_mutex_unlock (&eglglessink->render_lock);
@@ -1239,6 +1247,7 @@ gst_vpf_eglglessink_init (GstVpfEglGlesSink * eglglessink)
   eglglessink->using_cuda = FALSE; /* dGPU CUDA */
   eglglessink->using_nvbufsurf = FALSE; /* Jetson */
   eglglessink->nvbuf_api_version_new = DEFAULT_NVBUF_API_VERSION_NEW;
+  eglglessink->paintable = NULL;
 
   g_mutex_init (&eglglessink->render_lock);
   g_cond_init (&eglglessink->render_cond);
