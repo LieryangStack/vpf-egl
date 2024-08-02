@@ -242,7 +242,7 @@ render_thread_func (GstVpfEglGlesSink * eglglessink) {
         if (last_flow == GST_FLOW_OK)
             // gdk_paintable_invalidate_contents (eglglessink->paintable);
             g_main_context_invoke_full (NULL,
-                              G_PRIORITY_DEFAULT,
+                              G_PRIORITY_HIGH,
                               gtk_gst_paintable_set_texture_invoke,
                               eglglessink, NULL);
             // g_signal_emit (eglglessink, signals[UI_RENDER], 0);
